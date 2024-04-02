@@ -2,6 +2,7 @@ module SpriteGallery.Avalonia.Common
 
 open Avalonia.Controls
 open Avalonia.Media
+open Avalonia.FuncUI.DSL
 
 let tileSize = 64
 
@@ -16,6 +17,26 @@ let tileSize = 64
 //         .backgroundSource(AcrylicBackgroundSource.Digger)
 //         .tintColor(color)
 //         .fallbackColor(color)
+
+[<AutoOpen>]
+module ExperimentalAcrylicBorder =
+    open Avalonia.FuncUI.Builder
+    open Avalonia.FuncUI.Types
+    
+    type ExperimentalAcrylicBorder with
+        static member material<'t when 't :> ExperimentalAcrylicBorder>(value : ExperimentalAcrylicMaterial) : IAttr<'t> =
+            AttrBuilder.CreateProperty<ExperimentalAcrylicMaterial>(ExperimentalAcrylicBorder.MaterialProperty, value, ValueNone)
+
+let acrylicMaterial color =
+    let material = ExperimentalAcrylicMaterial()
+
+    material.BackgroundSource <- AcrylicBackgroundSource.Digger
+    material.FallbackColor <- color
+    material.TintColor <- color
+    material.TintOpacity <- 1
+    material.MaterialOpacity <- 0.5
+
+    material
 
 // let tryGetThemeResource<'a> name (window : ViewRef<Window>) : 'a option =
 //     window.TryValue

@@ -10,6 +10,7 @@
     <Compile Include="BundleLoader.fs" />
     <Compile Include="SpritesData.fs" />
     <Compile Include="Grid.fs" />
+    <Compile Include="LoadFileView.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
