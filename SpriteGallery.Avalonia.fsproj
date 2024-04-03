@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationIcon>owlcat_suspecting_framed.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="MicroUtilsWrapper.fs" />
@@ -9,9 +11,14 @@
     <Compile Include="Common.fs" />
     <Compile Include="BundleLoader.fs" />
     <Compile Include="SpritesData.fs" />
+    <Compile Include="SpritesGrid.fs" />
     <Compile Include="Grid.fs" />
     <Compile Include="LoadFileView.fs" />
     <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="owlcat_suspecting_framed.png" />
+    <EmbeddedResource Include="owlcat_suspecting.png" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia.Desktop" Version="11.0.10" />

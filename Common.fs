@@ -4,19 +4,7 @@ open Avalonia.Controls
 open Avalonia.Media
 open Avalonia.FuncUI.DSL
 
-let tileSize = 64
-
-// let withAcrylic material content =
-//     ExperimentalAcrylicBorder(content)
-//         .material(material)
-
-// let acrylicMaterial color = 
-//     ExperimentalAcrylicMaterial()
-//         .materialOpacity(0.5)
-//         .tintOpacity(1)
-//         .backgroundSource(AcrylicBackgroundSource.Digger)
-//         .tintColor(color)
-//         .fallbackColor(color)
+let defaultTileSize = 64
 
 [<AutoOpen>]
 module ExperimentalAcrylicBorder =
@@ -38,48 +26,45 @@ let acrylicMaterial color =
 
     material
 
-// let tryGetThemeResource<'a> name (window : ViewRef<Window>) : 'a option =
-//     window.TryValue
-//     |> Option.bind (fun window ->
-//         match window.TryFindResource(name, window.ActualThemeVariant) with
-//         | true, color ->
-//             match color with
-//             | :? 'a as resource -> Some resource
-//             | _ ->
-//                 eprintfn "Resource is not %A. Is %A" (typeof<'a>) (color.GetType())
-//                 None
-//         | _ -> None
-//     )
+let tryGetThemeResource<'a> resourceKey (window : Window) : 'a option =
+    match window.TryFindResource(resourceKey, window.ActualThemeVariant) with
+    | true, color ->
+        match color with
+        | :? 'a as resource -> Some resource
+        | _ ->
+            eprintfn "Resource is not %A. Is %A" (typeof<'a>) (color.GetType())
+            None
+    | _ -> None
 
-// let tryGetColor name (window : ViewRef<Window>) = tryGetThemeResource<Color> name window
+let tryGetColor (name : string) (window : Window) = tryGetThemeResource<Color> name window
 
-// type WindowColors = {
-//     AcrylicColor : Color option
-//     PanelAcrylicColor : Color option
-//     HighlightBrush : IBrush option
-// }
-// with 
-//     static member GetColors (windowRef : ViewRef<Window>) =
-//         {
-//             AcrylicColor =
-//                 windowRef |> tryGetColor "SystemAltMediumHighColor"
+type WindowColors = {
+    AcrylicColor : Color option
+    PanelAcrylicColor : Color option
+    HighlightBrush : IBrush option
+}
+with
+    static member GetColors (window : Window) =
+        {
+            AcrylicColor =
+                window |> tryGetColor "SystemAltMediumHighColor"
 
-//             PanelAcrylicColor =
-//                 windowRef |> tryGetColor "SystemAltMediumColor"
+            PanelAcrylicColor =
+                window |> tryGetColor "SystemAltMediumColor"
 
-//             HighlightBrush =
-//                 windowRef |> tryGetThemeResource<IBrush> "SystemControlHighlightAccentBrush"
-                
-//         }
-//     static member Defaults =
-//         {|
-//             AcrylicColor = Colors.DimGray
-//             PanelAcrylicColor = Colors.Gray
-//             HighlightBrush = Brushes.Blue
-//         |}
-//     member this.AcrylicColorOrDefault = this.AcrylicColor |> Option.defaultValue WindowColors.Defaults.AcrylicColor
-//     member this.PanelAcrylicColorOrDefault = this.PanelAcrylicColor |> Option.defaultValue WindowColors.Defaults.PanelAcrylicColor
-//     member this.HighlightBrushOrDefault = this.HighlightBrush |> Option.defaultValue WindowColors.Defaults.HighlightBrush
+            HighlightBrush =
+                window |> tryGetThemeResource<IBrush> "SystemControlHighlightAccentBrush"
+        }
+    static member Defaults =
+        {|
+            AcrylicColor = Colors.DimGray
+            PanelAcrylicColor = Colors.Gray
+            HighlightBrush = Brushes.Blue
+        |}
+    
+    member this.AcrylicColorOrDefault = this.AcrylicColor |> Option.defaultValue WindowColors.Defaults.AcrylicColor
+    member this.PanelAcrylicColorOrDefault = this.PanelAcrylicColor |> Option.defaultValue WindowColors.Defaults.PanelAcrylicColor
+    member this.HighlightBrushOrDefault = this.HighlightBrush |> Option.defaultValue WindowColors.Defaults.HighlightBrush
 
 let copyRect (textureBytes : System.Span<byte>) stride (rect : Avalonia.PixelRect) (dest : System.Span<byte>) =
     let xOffsetBytes = rect.X * 4
@@ -183,9 +168,6 @@ with
         | None ->
             let aspectRatio = this.Rect.Size.AspectRatio
 
-            // printf "Creating %i x %i bitmap for sprite" ((height |> float) * aspectRatio |> int) height
-            // this.Name |> Option.map (sprintf " \"%s\"") |> Option.defaultValue "" |> printfn "%s"
-
             let bytes = Array.zeroCreate<byte> (this.Rect.Width * this.Rect.Height * 4)
 
             copyRect (System.Span(this.BaseTexture.Bytes)) (this.BaseTexture.Size.Width * 4) (this.Rect) (System.Span(bytes))
@@ -202,7 +184,7 @@ with
 
 
 let tryGetIcon filename =
-    let resourceName = $"SpriteGallery.Fabulous.{filename}"
+    let resourceName = $"SpriteGallery.Avalonia.{filename}"
 
     let ass = System.Reflection.Assembly.GetExecutingAssembly()
     

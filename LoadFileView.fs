@@ -209,12 +209,25 @@ let update msg state =
         { state with Complete = true }, Cmd.none
 
 let view state (dispatch : Dispatch<Msg>) =
-    DockPanel.create [
-        DockPanel.horizontalAlignment HorizontalAlignment.Stretch
-        DockPanel.verticalAlignment VerticalAlignment.Center
-        DockPanel.margin 4
+    let suspecting = tryGetSuspectingIcon()
 
-        DockPanel.children [
+    StackPanel.create [
+        StackPanel.orientation Orientation.Vertical
+        StackPanel.horizontalAlignment HorizontalAlignment.Stretch
+        StackPanel.verticalAlignment VerticalAlignment.Center
+        StackPanel.margin 4
+
+        StackPanel.children [
+            match suspecting with
+            | Some bitmap ->
+                Image.create [
+                    Image.source bitmap
+                    Image.width bitmap.Size.Width
+                    Image.height bitmap.Size.Height
+                    Image.margin 4
+                ]
+            | None -> ()
+
             DockPanel.create [
                 DockPanel.dock Dock.Top
                 DockPanel.lastChildFill true
@@ -232,19 +245,20 @@ let view state (dispatch : Dispatch<Msg>) =
                         TextBox.margin 2
                         TextBox.text state.Path
 
-                        TextBox.onTextChanged (fun text -> UpdatePathText text |> dispatch)
+                        TextBox.onTextChanged (UpdatePathText >> dispatch)
                     ]
                 ]
             ]
             DockPanel.create [
                 DockPanel.dock Dock.Bottom
+                DockPanel.margin 2
                 DockPanel.lastChildFill true
 
                 DockPanel.children [
                     Button.create [
                         Button.dock Dock.Right
                         Button.margin 2
-                        Button.content "Open"
+                        Button.content "Load sprites"
 
                         Button.onClick (fun _ -> StartLoad |> dispatch)
                     ]

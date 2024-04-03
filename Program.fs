@@ -23,7 +23,12 @@ module App =
     | LoadFileView
     | GridView
 
-    type State = { Window : Window; View : View; LoadFileState : LoadFileView.State; GridState : GridView.State }
+    type State =
+      { Window : Window
+        View : View
+        LoadFileState : LoadFileView.State
+        GridState : GridView.State
+        Colors : WindowColors }
 
     let init (window : Window) =
         {
@@ -31,6 +36,7 @@ module App =
             LoadFileState = LoadFileView.init window
             GridState = GridView.init()
             View = LoadFileView
+            Colors = WindowColors.GetColors window
         },
         Cmd.none
 
@@ -61,7 +67,7 @@ module App =
 
     let view state (dispatch : Dispatch<Msg>) =
         View.createGeneric<ExperimentalAcrylicBorder> [
-            ExperimentalAcrylicBorder.material (acrylicMaterial Avalonia.Media.Colors.Black)
+            ExperimentalAcrylicBorder.material (acrylicMaterial state.Colors.AcrylicColorOrDefault)
 
             ExperimentalAcrylicBorder.child (
                 Panel.create [
@@ -80,11 +86,13 @@ type MainWindow() as this =
     inherit HostWindow()
     do
         base.Title <- ""
-        // base.Height <- 400.0
-        // base.Width <- 400.0
+        match tryGetAppIcon() with
+        | Some icon ->
+            base.Icon <- WindowIcon(icon)
+        | None -> ()
 
-        this.TransparencyLevelHint <- [WindowTransparencyLevel.AcrylicBlur]
-        this.Background <- Avalonia.Media.Brushes.Transparent
+        base.TransparencyLevelHint <- [WindowTransparencyLevel.AcrylicBlur]
+        base.Background <- Avalonia.Media.Brushes.Transparent
 
         //this.VisualRoot.VisualRoot.Renderer.DrawFps <- true
         //this.VisualRoot.VisualRoot.Renderer.DrawDirtyRects <- true
