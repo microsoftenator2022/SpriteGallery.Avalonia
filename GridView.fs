@@ -18,9 +18,9 @@ open SpriteGallery.Avalonia.Common
 open SpriteGallery.Avalonia.Controls.SpritesGrid
 
 module GridView =
-    type State = { Sprites : SpritesData option; Refresh : int }
+    type State = { Sprites : SpritesData option; Refresh : int; HighlightBrush : IBrush }
 
-    let init() = { Sprites = None; Refresh = 0 }
+    let init highlightBrush = { Sprites = None; Refresh = 0; HighlightBrush = highlightBrush }
 
     type Msg =
     | Unit
@@ -44,6 +44,8 @@ module GridView =
                     (match state.Sprites with
                     | Some sprites -> sprites.Sprites |> List.toArray
                     | None -> Array.empty)
+
+                SpritesGrid.highlightBrush state.HighlightBrush
             ]
             |> View.withKey (state.Refresh.ToString())
             |> ScrollViewer.content
