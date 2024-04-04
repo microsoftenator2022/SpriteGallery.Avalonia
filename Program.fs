@@ -28,11 +28,9 @@ module App =
         {
             Window : Window
             View : View
-            SpriteDetailsState : SpriteDetailsPanel.Model
             LoadFileState : LoadFileView.Model
-            GridState : GridView.Model
             Colors : WindowColors
-            // SpritesUpdated : Event<SpritesData option>
+            SpritesUpdated : Event<SpritesData option>
             SpriteSelected : Event<Sprite option>
         }
 
@@ -41,33 +39,31 @@ module App =
         {
             Window = window
             LoadFileState = LoadFileView.init window
-            SpriteDetailsState = SpriteDetailsPanel.init()
-            GridState = GridView.init colors.HighlightBrushOrDefault
             View = LoadFileView
             Colors = colors
+            SpritesUpdated = new Event<SpritesData option>()
             SpriteSelected = new Event<Sprite option>()
         },
         Cmd.none
 
     type Msg =
     | LoadFileMsg of LoadFileView.Msg
-    | GridMsg of GridView.Msg
-    // | SpriteDetailsMsg of SpriteDetailsPanel.Msg
     | ChangeView of View
     | UpdateSprites of SpritesData option
 
     let update msg model =
         match msg with
-        | ChangeView view -> { model with View = view }, Cmd.none
+        | ChangeView view ->
+            printfn "%A" msg
+            { model with View = view }, Cmd.none
         | UpdateSprites spritesData ->
-            match model.View with
-            | GridView ->
-                model, spritesData |> GridView.Msg.UpdateSprites |> Cmd.ofMsg |> (Cmd.map GridMsg)
-            | _ -> model, Cmd.none
-        // | SpriteDetailsMsg sdm ->
-        //     let sdModel, cmd = model.SpriteDetailsState |> SpriteDetailsPanel.update sdm
-            
-        //     { model with SpriteDetailsState = sdModel }, Cmd.map SpriteDetailsMsg cmd
+            spritesData
+            |> Option.map _.Sprites.Length
+            |> printfn "Sprites count = %A"
+
+            model.SpritesUpdated.Trigger spritesData
+
+            model, Cmd.none
 
         | LoadFileMsg lfm ->
             let lfModel, cmd = model.LoadFileState |> LoadFileView.update lfm
@@ -81,23 +77,7 @@ module App =
                 
             model, Cmd.batch (cmd :: cmds)
 
-        | GridMsg gm ->
-            let gs, cmd = model.GridState |> GridView.update gm
-            
-            let model = { model with GridState = gs }
-            let cmd = Cmd.map GridMsg cmd
-
-            let cmd = 
-                match gm with
-                | GridView.Msg.SelectedSpriteChanged s ->
-                    model.SpriteSelected.Trigger s
-                    cmd
-                    // Cmd.batch [cmd; s |> SpriteDetailsPanel.Msg.SpriteSelected |> Cmd.ofMsg |> (Cmd.map SpriteDetailsMsg)]
-                | _ -> cmd
-
-            model, cmd
-
-    let spritesViewPart model dispatch (spritesView : IView) =
+    let spritesViewPart model (spritesView : IView) =
         SplitView.create [
             SplitView.displayMode SplitViewDisplayMode.Inline
             SplitView.isPaneOpen true
@@ -129,9 +109,8 @@ module App =
                         | LoadFileView ->
                             LoadFileView.view model.LoadFileState (LoadFileMsg >> dispatch)
                         | GridView ->
-                            // GridView.view model.Colors.HighlightBrushOrDefault model.SpritesUpdated.Publish model.SpriteSelected.Trigger 
-                            GridView.view model.GridState (GridMsg >> dispatch)
-                            |> spritesViewPart model dispatch
+                            GridView.viewComponent model.LoadFileState.Sprites model.Colors.HighlightBrushOrDefault model.SpriteSelected.Trigger model.SpritesUpdated.Publish
+                            |> spritesViewPart model
                     ]
                 ]
             )

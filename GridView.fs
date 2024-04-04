@@ -20,9 +20,19 @@ open SpriteGallery.Avalonia
 open SpriteGallery.Avalonia.Common
 open SpriteGallery.Avalonia.Controls.SpritesGrid
 
-type Model = { Sprites : SpritesData option; Refresh : int; HighlightBrush : IBrush; SelectedSprite : Sprite option }
+type Model =
+  { Sprites : SpritesData option
+    Refresh : int
+    HighlightBrush : IBrush
+    SpriteSelected : Sprite option -> unit }
 
-let init highlightBrush = { Sprites = None; Refresh = 0; HighlightBrush = highlightBrush; SelectedSprite = None }
+let init spritesData highlightBrush spriteSelected =
+    {
+        Sprites = spritesData
+        Refresh = 0
+        HighlightBrush = highlightBrush
+        SpriteSelected = spriteSelected
+    }
 
 type Msg =
 | Unit
@@ -36,17 +46,9 @@ let update msg (model : Model) =
     | UpdateSprites sprites ->
         { model with Sprites = sprites }, Cmd.ofMsg Refresh
     | Refresh -> { model with Refresh = model.Refresh + 1 }, Cmd.ofMsg Unit
-    | SelectedSpriteChanged s -> { model with SelectedSprite = s }, Cmd.none
-    
-
-// let private subscriptions (updateSprites : IEvent<SpritesData option>) (_ : Model) : Sub<Msg> =
-//     let updateSpritesSub dispatch =
-//         printfn "Update"
-//         updateSprites.Subscribe(UpdateSprites >> dispatch)
-
-//     [
-//         [nameof updateSpritesSub], updateSpritesSub
-//     ]
+    | SelectedSpriteChanged s ->
+        model.SpriteSelected s
+        model, Cmd.none
 
 let view model dispatch =
     ScrollViewer.create [
@@ -66,3 +68,22 @@ let view model dispatch =
         |> View.withKey (model.Refresh.ToString())
         |> ScrollViewer.content
     ]
+
+let private subscriptions (updateSprites : System.IObservable<SpritesData option>) (_ : Model) : Sub<Msg> =
+    let updateSpritesSub dispatch =
+        updateSprites.Subscribe(UpdateSprites >> dispatch)
+
+    [
+        [nameof updateSpritesSub], updateSpritesSub
+    ]
+
+let viewComponent spritesData highlightBrush onSpriteSelected updateSprites = Component.create ("grid-component", fun ctx ->
+    let model, dispatch = ctx.useElmish(
+        (fun (spritesData, highlightBrush, onSpriteSelected) -> init spritesData highlightBrush onSpriteSelected, Cmd.none),
+        update,
+        (spritesData, highlightBrush, onSpriteSelected),
+        Program.withSubscription (subscriptions updateSprites)
+    )
+
+    view model dispatch
+)
