@@ -11,8 +11,9 @@
     <Compile Include="Common.fs" />
     <Compile Include="BundleLoader.fs" />
     <Compile Include="SpritesData.fs" />
+    <Compile Include="SpriteDetailsPanel.fs" />
     <Compile Include="SpritesGrid.fs" />
-    <Compile Include="Grid.fs" />
+    <Compile Include="GridView.fs" />
     <Compile Include="LoadFileView.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

@@ -1,3 +1,4 @@
+[<RequireQualifiedAccess>]
 module SpriteGallery.Avalonia.Views.LoadFileView
 
 open Elmish
@@ -21,6 +22,10 @@ open MicroUtils.Interop
 
 open SpriteGallery.Avalonia.Common
 
+// TODO improvments:
+// 1. GetOneAsync() -> GetSpriteAsync(pathId) (or PPtr?)
+// 2. If opening blueprint.assets, read BlueprintReferencedAssets sprites from *all* referenced bundles
+// 3. Filter objects with random access reader instead of reading entire objects
 type LoadContext (filePath : string, loadDependencies, loadBlueprintAssets) =
     let dir = System.IO.Path.GetDirectoryName filePath
     let baPath = System.IO.Path.Join(dir, "blueprint.assets")
@@ -103,7 +108,7 @@ type Progress = { Current : int; Total : int; SpritesData : SpritesData }
 with
     member this.IsComplete = this.Current = this.Total
 
-type State =
+type Model =
   { Path : string
     Sprites : SpritesData option
     Progress : Progress option

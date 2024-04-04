@@ -10,6 +10,9 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
 
+open Avalonia.Rendering
+open Avalonia.Interactivity
+
 open SpriteGallery.Avalonia.Common
 
 [<Struct>]
@@ -72,18 +75,24 @@ let cellSize (tileSize : float) (margin : float) (cell : SpriteCell) =
     let cs = cell.CellSpan |> float
     Size((cs * tileSize) + ((cs - 1.0) * margin), tileSize)
 
+type SelectedSpriteChangedEventArgs (routedEvent, sprite : Sprite option) =
+    inherit RoutedEventArgs(routedEvent)
+
+    member _.Sprite = sprite
+
 type SpritesGrid () as this =
     inherit Control()
 
-    let cellSize cell = cellSize this.TileSize this.Margin cell
-
+    let mutable sprites : Sprite[] = Array.empty
     let mutable layout : (int * SpriteCell[]) = (0, Array.empty)
+
+    let cellSize cell = cellSize this.TileSize this.TileMargin cell
     let generateLayout sprites columns = generateLayout sprites columns this.TileSize
 
-    let coordComponentToGrid x = coordComponentToGrid this.TileSize this.Margin x
-    let pointToGrid p = pointToGrid this.TileSize this.Margin p
-    let gridToRect g = gridToRect this.TileSize this.Margin g
-    let calculateColumnCount width = calculateColumnCount this.TileSize this.Margin width
+    let coordComponentToGrid x = coordComponentToGrid this.TileSize this.TileMargin x
+    let pointToGrid p = pointToGrid this.TileSize this.TileMargin p
+    let gridToRect g = gridToRect this.TileSize this.TileMargin g
+    let calculateColumnCount width = calculateColumnCount this.TileSize this.TileMargin width
 
     let getRowCount() = layout |> snd |> Array.tryLast |> function Some c -> c.RowIndex + 1 | None -> 0
 
@@ -99,10 +108,7 @@ type SpritesGrid () as this =
         
         Rect(Point(), bottomRightRect.BottomRight).Size
     
-    let mutable sprites : Sprite[] = Array.empty
-
     let mutable effectiveViewport = Rect()
-
     let mutable visualParent = None
 
     let isInParentBounds (point : Point) =
@@ -120,7 +126,9 @@ type SpritesGrid () as this =
 
             Rect(Point(), parentSize).Contains(Point(x, y))
 
-    do
+    static let evt = RoutedEvent.Register<SpritesGrid, SelectedSpriteChangedEventArgs>("SelectedSpriteChanged", RoutingStrategies.Bubble)
+
+    do    
         this.EffectiveViewportChanged.Add (fun args ->
             if coordComponentToGrid (args.EffectiveViewport.Bottom) <> coordComponentToGrid (effectiveViewport.Bottom) then
                 this.InvalidateVisual()
@@ -138,24 +146,40 @@ type SpritesGrid () as this =
         base.OnSizeChanged(args)
 
     override this.OnPointerPressed(args) =
-        let (row, column) = args.GetPosition(this) |> pointToGrid
-        let spriteCell = layout |> snd |> Seq.tryFind (fun c -> c.RowIndex = row && c.ColumnIndex <= column && (c.ColumnIndex + c.CellSpan) > column)
-        
-        this.SelectedSprite <-
-            if spriteCell = this.SelectedSprite then
-                None
-            else spriteCell
+        let (column, row) = args.GetPosition(this) |> pointToGrid
+        let selected = layout |> snd |> Seq.indexed |> Seq.tryFind (fun (_, c) -> c.RowIndex = row && c.ColumnIndex <= column && (c.ColumnIndex + c.CellSpan) > column)
+        // let spriteIndex = layout |> snd |> Seq.tryFindIndex (fun c -> c.RowIndex = row && c.ColumnIndex <= column && (c.ColumnIndex + c.CellSpan) > column)
 
-        printfn "%A" this.SelectedSprite
+        match selected with
+        | Some (index, sc) ->
+            this.SelectedSpriteIndex <-
+                if this.SelectedSpriteIndex = ValueSome index then ValueNone
+                else ValueSome index
 
-        args.Handled <- true
-    
-    member val SelectedSprite : SpriteCell option = None with get, set
+            let s =
+                match this.SelectedSpriteIndex with
+                | ValueSome _ -> sc.Sprite
+                | _ -> None
+            
+            SelectedSpriteChangedEventArgs(SpritesGrid.SelectedSpriteChangedEvent, s) |> this.RaiseEvent
+
+            args.Handled <- true
+
+            this.InvalidateVisual()
+        | None -> ()
+
+    member val SelectedSpriteIndex : int voption = ValueNone with get, set
+
+    member this.SelectedSprite =
+        this.SelectedSpriteIndex
+        |> ValueOption.bind (fun i ->
+            let sprites = snd layout
+            if i <= sprites.Length then ValueSome sprites[i] else ValueNone)
 
     member val TileSize : float = defaultTileSize with get, set
     static member TileSizeProperty = AvaloniaProperty.RegisterDirect<SpritesGrid, float>(
         nameof(Unchecked.defaultof<SpritesGrid>.TileSize),
-        (fun o -> o.TileSize),
+        _.TileSize,
         (fun o v -> o.TileSize <- v))
 
     member _.Sprites
@@ -166,34 +190,55 @@ type SpritesGrid () as this =
     static member SpritesProperty =
         AvaloniaProperty.RegisterDirect<SpritesGrid, Sprite[]>(
             nameof(Unchecked.defaultof<SpritesGrid>.Sprites),
-            (fun o -> o.Sprites),
+            _.Sprites,
             (fun o v -> o.Sprites <- v))
     
-    member val Margin : float = 2 with get, set
-    static member MarginProperty = AvaloniaProperty.RegisterDirect<SpritesGrid, float>(
-        nameof(Unchecked.defaultof<SpritesGrid>.Margin),
-        (fun o -> o.Margin),
-        (fun o v -> o.Margin <- v))
+    member val TileMargin : float = 2 with get, set
+    static member TileMarginProperty = AvaloniaProperty.RegisterDirect<SpritesGrid, float>(
+        nameof(Unchecked.defaultof<SpritesGrid>.TileMargin),
+        _.TileMargin,
+        (fun o v -> o.TileMargin <- v))
 
+    member val HighlightBrush : IBrush = Brushes.Blue with get, set
+    static member HighlightBrushProperty = AvaloniaProperty.RegisterDirect<SpritesGrid, IBrush>(
+        nameof(Unchecked.defaultof<SpritesGrid>.HighlightBrush),
+        _.HighlightBrush,
+        (fun o v -> o.HighlightBrush <- v))
+
+    static member SelectedSpriteChangedEvent with get() = evt
+
+    [<CLIEvent>]
+    member _.SelectedSpriteChanged =
+        { new IDelegateEvent<_> with
+            member _.AddHandler value = this.AddHandler(SpritesGrid.SelectedSpriteChangedEvent, value)
+            member _.RemoveHandler value = this.RemoveHandler(SpritesGrid.SelectedSpriteChangedEvent, value)
+        }    
+    
     member this.Columns = fst layout
     member this.Rows = getRowCount()
 
     override this.MeasureOverride(size) = calculateActualSize size
     override this.ArrangeOverride(size) = calculateActualSize size
-
     override this.Render(context) =
         if not (this.IsArrangeValid && this.IsMeasureValid = false) then
             for cell in snd layout do
                 let rect = (gridToRect (cell.ColumnIndex, cell.RowIndex)).WithWidth((cellSize cell).Width)
                 
                 if rect.TopLeft |> isInParentBounds
-                // || rect.BottomRight |> isInParentBounds
                 || rect.BottomLeft |> isInParentBounds then
-                    // if sprite.Rect.Height < this.TileSize then
-                    //     context.DrawImage(sprite.BaseTexture.Bitmap.Force(), sprite.Rect.ToRectWithDpi(96), rect)
-                    // else
                     match cell.Sprite with
                     | Some s ->
+                        if this.SelectedSprite = ValueSome cell then
+                            context.DrawRectangle(
+                                Pen(this.HighlightBrush, this.TileMargin * 2.0),
+                                Rect(
+                                    x = rect.X - (this.TileMargin),
+                                    y = rect.Y - (this.TileMargin),
+                                    width = rect.Width + (this.TileMargin * 2.0),
+                                    height = rect.Height + (this.TileMargin * 2.0)
+                                )
+                            )
+
                         let bitmap = s.GetHeightScaledBitmap(this.TileSize |> int)
                         let size = MediaExtensions.CalculateSize(Stretch.Uniform, rect.Size, bitmap.Size, StretchDirection.DownOnly)
                         let rect = rect.CenterRect(Rect(rect.Position, size))
@@ -203,6 +248,9 @@ type SpritesGrid () as this =
 
         base.Render(context)
 
+    interface ICustomHitTest with
+        member this.HitTest point = true
+
 [<AutoOpen>]
 module SpritesGrid =
     let create(attrs : IAttr<SpritesGrid> list) : IView<SpritesGrid> = ViewBuilder.Create<SpritesGrid>(attrs)
@@ -210,7 +258,11 @@ module SpritesGrid =
     type SpritesGrid with
         static member sprites<'t when 't :> SpritesGrid>(value : Sprite[]) : IAttr<'t> =
             AttrBuilder<'t>.CreateProperty<Sprite[]>(SpritesGrid.SpritesProperty, value, ValueNone)
-        static member margin<'t when 't :> SpritesGrid>(value : float) : IAttr<'t> =
-            AttrBuilder<'t>.CreateProperty<float>(SpritesGrid.MarginProperty, value, ValueNone)
+        static member tileMargin<'t when 't :> SpritesGrid>(value : float) : IAttr<'t> =
+            AttrBuilder<'t>.CreateProperty<float>(SpritesGrid.TileMarginProperty, value, ValueNone)
         static member tileSize<'t when 't :> SpritesGrid>(value : float) : IAttr<'t> =
             AttrBuilder<'t>.CreateProperty<float>(SpritesGrid.TileSizeProperty, value, ValueNone)
+        static member highlightBrush<'t when 't :> SpritesGrid>(value : IBrush) : IAttr<'t> =
+            AttrBuilder<'t>.CreateProperty<IBrush>(SpritesGrid.HighlightBrushProperty, value, ValueNone)
+        static member onSelectedSpriteChanged<'t when 't :> SpritesGrid>(func, ?subPatchOptions) =
+            AttrBuilder<'t>.CreateSubscription(SpritesGrid.SelectedSpriteChangedEvent, func, ?subPatchOptions = subPatchOptions)
