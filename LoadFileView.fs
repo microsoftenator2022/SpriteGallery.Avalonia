@@ -118,7 +118,7 @@ type Model =
 with
     member this.InProgress =
         match this.Progress with
-        | Some p -> p.IsComplete
+        | Some p -> not p.IsComplete
         | None -> false
 
 let init window =
@@ -213,7 +213,7 @@ let update msg state =
         printfn "Complete"
         { state with Complete = true }, Cmd.none
 
-let view state (dispatch : Dispatch<Msg>) =
+let view (model : Model) (dispatch : Dispatch<Msg>) =
     let suspecting = tryGetSuspectingIcon()
 
     StackPanel.create [
@@ -244,13 +244,16 @@ let view state (dispatch : Dispatch<Msg>) =
                         Button.margin 2
                         Button.content "Select file..."
                         Button.onClick (fun _ -> SelectFile |> dispatch)
+
+                        Button.isEnabled (not model.InProgress)
                     ]
                     TextBox.create [
                         TextBox.horizontalAlignment HorizontalAlignment.Stretch
                         TextBox.margin 2
-                        TextBox.text state.Path
+                        TextBox.text model.Path
 
                         TextBox.onTextChanged (UpdatePathText >> dispatch)
+                        TextBox.isEnabled (not model.InProgress)
                     ]
                 ]
             ]
@@ -266,12 +269,13 @@ let view state (dispatch : Dispatch<Msg>) =
                         Button.content "Load sprites"
 
                         Button.onClick (fun _ -> StartLoad |> dispatch)
+                        Button.isEnabled (not model.InProgress)
                     ]
                     ProgressBar.create [
                         ProgressBar.margin 2
                         ProgressBar.horizontalAlignment HorizontalAlignment.Stretch
                         let current, max =
-                            match state.Progress with
+                            match model.Progress with
                             | Some p -> p.Current, p.Total
                             | None -> 0, 1
 

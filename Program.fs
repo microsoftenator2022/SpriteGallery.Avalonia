@@ -54,13 +54,9 @@ module App =
     let update msg model =
         match msg with
         | ChangeView view ->
-            printfn "%A" msg
             { model with View = view }, Cmd.none
-        | UpdateSprites spritesData ->
-            spritesData
-            |> Option.map _.Sprites.Length
-            |> printfn "Sprites count = %A"
 
+        | UpdateSprites spritesData ->
             model.SpritesUpdated.Trigger spritesData
 
             model, Cmd.none
@@ -109,7 +105,12 @@ module App =
                         | LoadFileView ->
                             LoadFileView.view model.LoadFileState (LoadFileMsg >> dispatch)
                         | GridView ->
-                            GridView.viewComponent model.LoadFileState.Sprites model.Colors.HighlightBrushOrDefault model.SpriteSelected.Trigger model.SpritesUpdated.Publish
+                            GridView.viewComponent
+                                model.LoadFileState.Sprites
+                                model.Colors.HighlightBrushOrDefault
+                                model.SpriteSelected.Trigger
+                                model.SpritesUpdated.Publish
+                                model.Window
                             |> spritesViewPart model
                     ]
                 ]
@@ -142,7 +143,7 @@ type App() =
     override this.Initialize() =
         this.Styles.Add (FluentTheme())
         this.RequestedThemeVariant <- Styling.ThemeVariant.Default
-
+        
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with
         | :? IClassicDesktopStyleApplicationLifetime as desktopLifetime ->
@@ -152,6 +153,7 @@ type App() =
 
 module Program =
 
+    [<System.STAThread>]
     [<EntryPoint>]
     let main(args: string[]) =
         AppBuilder

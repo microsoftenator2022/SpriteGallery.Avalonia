@@ -6,10 +6,11 @@ open Avalonia.FuncUI.Types
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Input
+open Avalonia.Input.Platform
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
-
 open Avalonia.Rendering
 open Avalonia.Interactivity
 
@@ -75,16 +76,50 @@ let cellSize (tileSize : float) (margin : float) (cell : SpriteCell) =
     let cs = cell.CellSpan |> float
     Size((cs * tileSize) + ((cs - 1.0) * margin), tileSize)
 
-type SelectedSpriteChangedEventArgs (routedEvent, sprite : Sprite option) =
-    inherit RoutedEventArgs(routedEvent)
+let getSpriteIndexInDirection (layout : SpriteCell[], index) directionKey =
+    let currentColumn, currentRow = layout[index].ColumnIndex, layout[index].RowIndex
 
+    match directionKey with
+    | Key.Down ->
+        layout
+        |> Seq.pairwise
+        |> Seq.tryFindIndex (fun (x, y) -> 
+            x.RowIndex = currentRow + 1
+            && (y.ColumnIndex > currentColumn || y.RowIndex > currentRow + 1)
+            && x.ColumnIndex <= currentColumn)
+
+    | Key.Up ->
+        layout
+        |> Seq.pairwise
+        |> Seq.tryFindIndex (fun (x, y) ->
+            x.RowIndex = currentRow - 1
+            && (y.ColumnIndex > currentColumn || y.RowIndex > currentRow - 1)
+            && x.ColumnIndex <= currentColumn)
+    
+    | Key.Left ->
+        if index <= 0 then None
+        elif layout[index - 1].RowIndex < layout[index].RowIndex then None
+        else Some (index - 1)
+
+    | Key.Right ->
+        if index >= layout.Length then None
+        elif layout[index + 1].RowIndex > layout[index].RowIndex then None
+        else Some (index + 1)
+    | _ -> None
+
+type SpriteEventArgs (routedEvent : RoutedEvent, sprite : Sprite option) =
+    inherit RoutedEventArgs(routedEvent)
     member _.Sprite = sprite
+
+    override this.ToString() =
+        sprintf "%s %A" routedEvent.Name this.Sprite
 
 type SpritesGrid () as this =
     inherit Control()
 
     let mutable sprites : Sprite[] = Array.empty
     let mutable layout : (int * SpriteCell[]) = (0, Array.empty)
+    let mutable selectedSpriteIndex = ValueNone
 
     let cellSize cell = cellSize this.TileSize this.TileMargin cell
     let generateLayout sprites columns = generateLayout sprites columns this.TileSize
@@ -126,9 +161,12 @@ type SpritesGrid () as this =
 
             Rect(Point(), parentSize).Contains(Point(x, y))
 
-    static let evt = RoutedEvent.Register<SpritesGrid, SelectedSpriteChangedEventArgs>("SelectedSpriteChanged", RoutingStrategies.Bubble)
+    static let spriteSelectedEvent = RoutedEvent.Register<SpritesGrid, SpriteEventArgs>("SelectedSpriteChanged", RoutingStrategies.Bubble)
+    static let copySpriteEvent = RoutedEvent.Register<SpritesGrid, SpriteEventArgs>("CopySprite", RoutingStrategies.Bubble)
 
-    do    
+    do
+        this.Focusable <- true
+
         this.EffectiveViewportChanged.Add (fun args ->
             if coordComponentToGrid (args.EffectiveViewport.Bottom) <> coordComponentToGrid (effectiveViewport.Bottom) then
                 this.InvalidateVisual()
@@ -145,36 +183,67 @@ type SpritesGrid () as this =
 
         base.OnSizeChanged(args)
 
+    override this.OnKeyDown(args) =
+        let (|DirectionKey|_|) (args : KeyEventArgs) =
+            match args.Key with
+            | Key.Up -> Some DirectionKey
+            | Key.Down -> Some DirectionKey
+            | Key.Left -> Some DirectionKey
+            | Key.Right -> Some DirectionKey
+            | _ -> None
+
+        let (|CtrlC|_|) (args : KeyEventArgs) =
+            match args.KeyModifiers, args.Key with
+            | KeyModifiers.Control, Key.C -> Some CtrlC
+            | _ -> None
+
+        match args with
+        | DirectionKey ->
+            match this.SelectedSpriteIndex with
+            | ValueSome index ->
+                this.SelectedSpriteIndex <-
+                    getSpriteIndexInDirection (snd layout, index) args.Key
+                    |> function
+                    | Some i -> ValueSome i
+                    | None -> ValueSome index
+            | ValueNone -> ()
+        | CtrlC -> SpriteEventArgs(SpritesGrid.CopySpriteEvent, this.SelectedSprite |> function ValueSome s -> s.Sprite | ValueNone -> None) |> this.RaiseEvent
+        | _ -> ()
+
     override this.OnPointerPressed(args) =
         let (column, row) = args.GetPosition(this) |> pointToGrid
-        let selected = layout |> snd |> Seq.indexed |> Seq.tryFind (fun (_, c) -> c.RowIndex = row && c.ColumnIndex <= column && (c.ColumnIndex + c.CellSpan) > column)
-        // let spriteIndex = layout |> snd |> Seq.tryFindIndex (fun c -> c.RowIndex = row && c.ColumnIndex <= column && (c.ColumnIndex + c.CellSpan) > column)
+        let selected = layout |> snd |> Seq.tryFindIndex (fun c -> c.RowIndex = row && c.ColumnIndex <= column && (c.ColumnIndex + c.CellSpan) > column)
 
         match selected with
-        | Some (index, sc) ->
+        | Some index ->
             this.SelectedSpriteIndex <-
                 if this.SelectedSpriteIndex = ValueSome index then ValueNone
                 else ValueSome index
 
-            let s =
-                match this.SelectedSpriteIndex with
-                | ValueSome _ -> sc.Sprite
-                | _ -> None
-            
-            SelectedSpriteChangedEventArgs(SpritesGrid.SelectedSpriteChangedEvent, s) |> this.RaiseEvent
-
             args.Handled <- true
-
-            this.InvalidateVisual()
         | None -> ()
 
-    member val SelectedSpriteIndex : int voption = ValueNone with get, set
+    member this.SelectedSpriteIndex
+        with get() = selectedSpriteIndex
+        and set value =
+            if selectedSpriteIndex <> value then
+                selectedSpriteIndex <- value
+
+                let s =
+                    match value with
+                    | ValueSome i -> (layout |> snd).[i].Sprite
+                    | ValueNone -> None
+                
+                SpriteEventArgs(SpritesGrid.SelectedSpriteChangedEvent, s) |> this.RaiseEvent
+
+                this.InvalidateVisual()
 
     member this.SelectedSprite =
-        this.SelectedSpriteIndex
-        |> ValueOption.bind (fun i ->
+        match this.SelectedSpriteIndex with
+        | ValueSome i ->
             let sprites = snd layout
-            if i <= sprites.Length then ValueSome sprites[i] else ValueNone)
+            if i <= sprites.Length then ValueSome sprites[i] else ValueNone
+        | ValueNone -> ValueNone
 
     member val TileSize : float = defaultTileSize with get, set
     static member TileSizeProperty = AvaloniaProperty.RegisterDirect<SpritesGrid, float>(
@@ -205,15 +274,24 @@ type SpritesGrid () as this =
         _.HighlightBrush,
         (fun o v -> o.HighlightBrush <- v))
 
-    static member SelectedSpriteChangedEvent with get() = evt
+    static member SelectedSpriteChangedEvent with get() = spriteSelectedEvent
 
     [<CLIEvent>]
     member _.SelectedSpriteChanged =
         { new IDelegateEvent<_> with
             member _.AddHandler value = this.AddHandler(SpritesGrid.SelectedSpriteChangedEvent, value)
             member _.RemoveHandler value = this.RemoveHandler(SpritesGrid.SelectedSpriteChangedEvent, value)
-        }    
-    
+        }
+
+    static member CopySpriteEvent with get() = copySpriteEvent
+
+    [<CLIEvent>]
+    member _.CopySprite =
+        { new IDelegateEvent<_> with
+            member _.AddHandler value = this.AddHandler(SpritesGrid.CopySpriteEvent, value)
+            member _.RemoveHandler value = this.RemoveHandler(SpritesGrid.CopySpriteEvent, value)
+        }
+
     member this.Columns = fst layout
     member this.Rows = getRowCount()
 
@@ -266,3 +344,5 @@ module SpritesGrid =
             AttrBuilder<'t>.CreateProperty<IBrush>(SpritesGrid.HighlightBrushProperty, value, ValueNone)
         static member onSelectedSpriteChanged<'t when 't :> SpritesGrid>(func, ?subPatchOptions) =
             AttrBuilder<'t>.CreateSubscription(SpritesGrid.SelectedSpriteChangedEvent, func, ?subPatchOptions = subPatchOptions)
+        static member onCopySprite<'t when 't :> SpritesGrid>(func, ?subPatchOptions) =
+            AttrBuilder<'t>.CreateSubscription(SpritesGrid.CopySpriteEvent, func, ?subPatchOptions = subPatchOptions)

@@ -15,6 +15,15 @@ module ExperimentalAcrylicBorder =
         static member material<'t when 't :> ExperimentalAcrylicBorder>(value : ExperimentalAcrylicMaterial) : IAttr<'t> =
             AttrBuilder.CreateProperty<ExperimentalAcrylicMaterial>(ExperimentalAcrylicBorder.MaterialProperty, value, ValueNone)
 
+[<AutoOpen>]
+module ScrollViewer =
+    open Avalonia.FuncUI.Builder
+    open Avalonia.FuncUI.Types
+
+    type Control with
+        static member bringIntoViewOnFocusChange<'t when 't :> Control>(value : bool) : IAttr<'t> =
+            AttrBuilder.CreateProperty<bool>(ScrollViewer.BringIntoViewOnFocusChangeProperty, value, ValueNone)
+
 let acrylicMaterial color =
     let material = ExperimentalAcrylicMaterial()
 

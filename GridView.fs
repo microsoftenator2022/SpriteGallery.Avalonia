@@ -12,6 +12,7 @@ open Avalonia.FuncUI.Elmish.ElmishHook
 
 open Avalonia
 open Avalonia.Controls
+open Avalonia.Input.Platform
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
@@ -24,14 +25,16 @@ type Model =
   { Sprites : SpritesData option
     Refresh : int
     HighlightBrush : IBrush
-    SpriteSelected : Sprite option -> unit }
+    SpriteSelected : Sprite option -> unit
+    Window : Window }
 
-let init spritesData highlightBrush spriteSelected =
+let init spritesData highlightBrush spriteSelected window =
     {
         Sprites = spritesData
         Refresh = 0
         HighlightBrush = highlightBrush
         SpriteSelected = spriteSelected
+        Window = window
     }
 
 type Msg =
@@ -39,6 +42,28 @@ type Msg =
 | UpdateSprites of SpritesData option
 | Refresh
 | SelectedSpriteChanged of Sprite option
+| CopySprite of Sprite
+
+let copySpriteToClipboard (clipboard : IClipboard, sprite) =
+    let source = System.Span(sprite.BaseTexture.Bytes)
+    let stride = sprite.BaseTexture.Bitmap.Force().PixelSize.Width * 4
+    let rect = sprite.Rect
+    let dest = Array.zeroCreate<byte> (rect.Width * rect.Height * 4)
+    copyRect source stride rect (System.Span(dest))
+    
+    use bitmap = createBitmap dest sprite.Rect.Size
+    let ms = new System.IO.MemoryStream()
+    
+    bitmap.Save(ms)
+    
+    let pngBytes = ms.ToArray()
+
+    let dataObject = Avalonia.Input.DataObject()
+    
+    dataObject.Set("image/png", pngBytes)
+    
+    Avalonia.Threading.Dispatcher.UIThread.InvokeAsync (fun () -> clipboard.SetDataObjectAsync(dataObject))
+    |> Async.AwaitTask
 
 let update msg (model : Model) =
     match msg with
@@ -49,9 +74,17 @@ let update msg (model : Model) =
     | SelectedSpriteChanged s ->
         model.SpriteSelected s
         model, Cmd.none
+    | CopySprite sprite ->
+        model,
+        Cmd.OfAsync.attempt
+            copySpriteToClipboard
+            (TopLevel.GetTopLevel(model.Window).Clipboard, sprite)
+            (fun exn -> printfn "%A" exn; Unit)
 
 let view model dispatch =
     ScrollViewer.create [
+        ScrollViewer.bringIntoViewOnFocusChange false
+
         SpritesGrid.create [
             SpritesGrid.horizontalAlignment HorizontalAlignment.Left
             SpritesGrid.verticalAlignment VerticalAlignment.Top
@@ -64,6 +97,8 @@ let view model dispatch =
             SpritesGrid.highlightBrush model.HighlightBrush
 
             SpritesGrid.onSelectedSpriteChanged ((fun args -> args.Sprite |> SelectedSpriteChanged |> dispatch), SubPatchOptions.Always)
+            SpritesGrid.onCopySprite ((fun args -> args.Sprite |> Option.iter (CopySprite >> dispatch)), SubPatchOptions.Always)
+               
         ]
         |> View.withKey (model.Refresh.ToString())
         |> ScrollViewer.content
@@ -77,13 +112,14 @@ let private subscriptions (updateSprites : System.IObservable<SpritesData option
         [nameof updateSpritesSub], updateSpritesSub
     ]
 
-let viewComponent spritesData highlightBrush onSpriteSelected updateSprites = Component.create ("grid-component", fun ctx ->
-    let model, dispatch = ctx.useElmish(
-        (fun (spritesData, highlightBrush, onSpriteSelected) -> init spritesData highlightBrush onSpriteSelected, Cmd.none),
-        update,
-        (spritesData, highlightBrush, onSpriteSelected),
-        Program.withSubscription (subscriptions updateSprites)
-    )
+let viewComponent spritesData highlightBrush onSpriteSelected updateSprites window =
+    Component.create ("grid-component", fun ctx ->
+        let model, dispatch = ctx.useElmish(
+            (fun (spritesData, highlightBrush, onSpriteSelected, window) -> init spritesData highlightBrush onSpriteSelected window, Cmd.none),
+            update,
+            (spritesData, highlightBrush, onSpriteSelected, window),
+            Program.withSubscription (subscriptions updateSprites)
+        )
 
-    view model dispatch
-)
+        view model dispatch
+    )
