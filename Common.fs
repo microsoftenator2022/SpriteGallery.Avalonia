@@ -150,10 +150,10 @@ with
     override this.Finalize() = (this :> System.IDisposable).Dispose()
 
     member this.GetHeightScaledBitmap (height : int, ?scaleTolerance : float, ?fractional : bool) =
+        let height = min height this.Rect.Height
+
         let scaleTolerance = defaultArg scaleTolerance 0.0
         let fractional = defaultArg fractional false
-
-        // let height = min height this.Rect.Size.Height
 
         let isWholeNumber (x : float) =
             x - (x |> int |> float) = 0.0
