@@ -211,7 +211,7 @@ let update msg model =
 
                     ProgressUpdate (progress, context)
                 | None -> Unit)
-                (fun exn -> printfn "%A" exn; Unit)
+                (fun exn -> eprintfn "%A" exn; Unit)
         else
             (context :> System.IDisposable).Dispose()
             { state with Sprites = Some progress.SpritesData }, Cmd.ofMsg Complete

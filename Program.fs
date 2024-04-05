@@ -57,12 +57,12 @@ module App =
     let update msg model =
         match msg with
         | ViewChanged view ->
-            printfn "%A" msg
+            // printfn "%A" msg
 
             { model with View = view; ChangeToView = None }, Cmd.none
 
         | ChangeView view ->
-            printfn "%A" msg
+            // printfn "%A" msg
 
             { model with ChangeToView = Some view }, Cmd.none
 

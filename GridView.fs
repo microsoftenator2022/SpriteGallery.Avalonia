@@ -69,7 +69,7 @@ let update msg (model : Model) =
     match msg with
     | Unit -> model, Cmd.none
     | UpdateSprites sprites ->
-        printfn "%A" msg
+        // printfn "%A" msg
         { model with Sprites = sprites }, Cmd.ofMsg Refresh
     | Refresh -> { model with Refresh = model.Refresh + 1 }, Cmd.ofMsg Unit
     | SelectedSpriteChanged s ->
@@ -80,7 +80,7 @@ let update msg (model : Model) =
         Cmd.OfAsync.attempt
             copySpriteToClipboard
             (TopLevel.GetTopLevel(model.Window).Clipboard, sprite)
-            (fun exn -> printfn "%A" exn; Unit)
+            (fun exn -> eprintfn "%A" exn; Unit)
 
 let view model dispatch =
     ScrollViewer.create [
