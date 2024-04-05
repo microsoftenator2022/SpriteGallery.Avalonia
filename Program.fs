@@ -32,6 +32,7 @@ module App =
             Colors : WindowColors
             SpritesUpdated : Event<SpritesData option>
             SpriteSelected : Event<Sprite option>
+            ChangeToView : View option
         }
 
     let init (window : Window) =
@@ -43,18 +44,27 @@ module App =
             Colors = colors
             SpritesUpdated = new Event<SpritesData option>()
             SpriteSelected = new Event<Sprite option>()
+            ChangeToView = None
         },
         Cmd.none
 
     type Msg =
     | LoadFileMsg of LoadFileView.Msg
-    | ChangeView of View
+    | ViewChanged of View
     | UpdateSprites of SpritesData option
+    | ChangeView of View
 
     let update msg model =
         match msg with
+        | ViewChanged view ->
+            printfn "%A" msg
+
+            { model with View = view; ChangeToView = None }, Cmd.none
+
         | ChangeView view ->
-            { model with View = view }, Cmd.none
+            printfn "%A" msg
+
+            { model with ChangeToView = Some view }, Cmd.none
 
         | UpdateSprites spritesData ->
             model.SpritesUpdated.Trigger spritesData
@@ -66,19 +76,22 @@ module App =
             let model, cmd = { model with LoadFileState = lfModel }, Cmd.map LoadFileMsg cmd
 
             let cmds =
-                if lfModel.Complete then
+                if lfm = LoadFileView.Msg.Complete then
                     let sprites = lfModel.Sprites
                     [Cmd.ofMsg (ChangeView GridView); Cmd.ofMsg (UpdateSprites sprites)]
                 else []
                 
             model, Cmd.batch (cmd :: cmds)
+            // model, cmd
 
-    let spritesViewPart model (spritesView : IView) =
+    let panelLength = 400
+
+    let splitView (model : Model) (content : IView) =
         SplitView.create [
             SplitView.displayMode SplitViewDisplayMode.Inline
-            SplitView.isPaneOpen true
+            SplitView.isPaneOpen (model.View <> LoadFileView)
             SplitView.panePlacement SplitViewPanePlacement.Right
-            SplitView.openPaneLength 400
+            SplitView.openPaneLength panelLength
             SplitView.paneBackground Colors.Transparent
 
             SplitView.pane (
@@ -91,27 +104,58 @@ module App =
                 ]
             )
 
-            SplitView.content spritesView
+            SplitView.content content
         ]
-
+    
     let view model (dispatch : Dispatch<Msg>) =
+
+        let loadTab =
+            TabItem.create [
+                TabItem.header "Open bundle"
+                TabItem.isSelected (model.View = LoadFileView || model.ChangeToView = Some LoadFileView)
+                
+                TabItem.content (
+                    LoadFileView.view panelLength model.LoadFileState (LoadFileMsg >> dispatch)
+                )
+
+                TabItem.onIsSelectedChanged (fun s -> if s then ViewChanged LoadFileView |> dispatch)
+            ]
+
+        let gridViewTab =
+            TabItem.create [
+                TabItem.header "Grid"
+                TabItem.isEnabled model.LoadFileState.Complete
+                TabItem.isSelected (model.View = GridView || model.ChangeToView = Some GridView)
+
+                TabItem.content (
+                    GridView.viewComponent
+                        model.LoadFileState.Sprites
+                        model.Colors.HighlightBrushOrDefault
+                        model.SpriteSelected.Trigger
+                        // model.SpritesUpdated.Publish
+                        model.Window
+                    |> View.withKey (sprintf "%A" model.LoadFileState.CurrentFile)
+                )
+
+                TabItem.onIsSelectedChanged (fun s -> if s then ViewChanged GridView |> dispatch)
+            ]
+
         View.createGeneric<ExperimentalAcrylicBorder> [
             ExperimentalAcrylicBorder.material (acrylicMaterial model.Colors.AcrylicColorOrDefault)
 
             ExperimentalAcrylicBorder.child (
                 Panel.create [
                     Panel.children [
-                        match model.View with
-                        | LoadFileView ->
-                            LoadFileView.view model.LoadFileState (LoadFileMsg >> dispatch)
-                        | GridView ->
-                            GridView.viewComponent
-                                model.LoadFileState.Sprites
-                                model.Colors.HighlightBrushOrDefault
-                                model.SpriteSelected.Trigger
-                                model.SpritesUpdated.Publish
-                                model.Window
-                            |> spritesViewPart model
+                        
+                        TabControl.create [
+                            TabControl.tabStripPlacement Dock.Bottom
+
+                            TabControl.viewItems [
+                                loadTab
+                                gridViewTab
+                            ]
+                        ]
+                        |> splitView model
                     ]
                 ]
             )

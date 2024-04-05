@@ -43,35 +43,40 @@ type LoadContext (filePath : string, loadDependencies, loadBlueprintAssets) =
         started <- true
 
         AssetLoader.init()
+        try
+            try
+                let archive =
+                    if loadDependencies then
+                        AssetLoader.mountArchiveWithDependencies filePath |> fst
+                    else AssetLoader.mountArchive filePath
 
-        let archive =
-            if loadDependencies then
-                AssetLoader.mountArchiveWithDependencies filePath |> fst
-            else AssetLoader.mountArchive filePath
+                if loadBlueprintAssets then    
+                    AssetLoader.mountArchive baPath |> ignore
+                
+                let spriteObjectInfos = AssetLoader.getSpriteObjectsInArchive archive
 
-        if loadBlueprintAssets then    
-            AssetLoader.mountArchive baPath |> ignore
-        
-        let spriteObjectInfos = AssetLoader.getSpriteObjectsInArchive archive
+                spriteCount <- spriteObjectInfos.Length
 
-        spriteCount <- spriteObjectInfos.Length
+                for (sfPath, o) in spriteObjectInfos do
+                    waitHandle.Force().WaitOne() |> ignore
+                    
+                    let sf = AssetLoader.getSerializedFile sfPath |> toOption
+                    let sprite = sf |> Option.bind (fun sf -> AssetLoader.getSprite o sf)
 
-        for (sfPath, o) in spriteObjectInfos do
-            waitHandle.Force().WaitOne() |> ignore
-            
-            let sf = AssetLoader.getSerializedFile sfPath |> toOption
-            let sprite = sf |> Option.bind (fun sf -> AssetLoader.getSprite o sf)
+                    spritesData <-
+                        let spritesData = { spritesData with Textures = AssetLoader.textures }
 
-            spritesData <-
-                let spritesData = { spritesData with Textures = AssetLoader.textures }
+                        match sprite with
+                        | Some sprite -> { spritesData with Sprites = sprite :: spritesData.Sprites }
+                        | None -> spritesData
 
-                match sprite with
-                | Some sprite -> { spritesData with Sprites = sprite :: spritesData.Sprites }
-                | None -> spritesData
-
-            spriteUpdate.Trigger sprite
-
-        AssetLoader.cleanup()
+                    spriteUpdate.Trigger sprite
+            finally
+                AssetLoader.cleanup()
+        with
+            e ->
+                eprintfn "%A" e
+                reraise()
 
         complete <- true
 
@@ -110,6 +115,7 @@ with
 
 type Model =
   { Path : string
+    CurrentFile : string option
     Sprites : SpritesData option
     Progress : Progress option
     Window : Window
@@ -124,6 +130,7 @@ with
 let init window =
     {
         Path = ""
+        CurrentFile = None
         Sprites = None
         Progress = None
         Window = window
@@ -140,26 +147,26 @@ type Msg =
 | StatusMessage of string
 | Complete
 
-let loadStart state =
-    let dir = System.IO.Path.GetDirectoryName state.Path
+let loadStart model =
+    let dir = System.IO.Path.GetDirectoryName model.Path
     let baPath = System.IO.Path.Join(dir, "blueprint.assets")
 
     let useBlueprintAssets = System.IO.File.Exists baPath
     let loadDependencies = System.IO.Path.Join(dir, "dependencylist.json") |> System.IO.File.Exists
 
-    if System.IO.File.Exists state.Path |> not then
-        { state with StatusMessage = sprintf "'%s' does not exist" state.Path }, Cmd.none
+    if System.IO.File.Exists model.Path |> not then
+        { model with StatusMessage = sprintf "'%s' does not exist" model.Path }, Cmd.none
     // elif state.LoadBlueprintAssets && System.IO.File.Exists baPath |> not then
     //     { state with StatusMessage = sprintf "'%s' does not exist" baPath }, Cmd.none
     else
-        state,
+        model,
         [
             StatusMessage "Loading sprites"
             |> Cmd.ofMsg
 
             (
                 // let context = new LoadContext(state.Path, state.LoadDependencies, state.LoadBlueprintAssets)
-                let context = new LoadContext(state.Path, loadDependencies, useBlueprintAssets)
+                let context = new LoadContext(model.Path, loadDependencies, useBlueprintAssets)
                 context.Start()
 
                 ProgressUpdate ({ Current = 0; Total = 1; SpritesData = SpritesData.init() }, context)
@@ -167,30 +174,31 @@ let loadStart state =
             )
         ] |> Cmd.batch
 
-let update msg state =
+let update msg model =
     match msg with
-    | Unit -> state, Cmd.none
+    | Unit -> model, Cmd.none
 
     | SelectFile ->
-        state,
+        model,
         Cmd.OfAsyncImmediate.perform
-            (state.Window.StorageProvider.OpenFilePickerAsync >> Async.AwaitTask)
+            (model.Window.StorageProvider.OpenFilePickerAsync >> Async.AwaitTask)
             (Platform.Storage.FilePickerOpenOptions(AllowMultiple = false))
             (fun f -> f |> Seq.tryHead |> (function Some path -> path.Path.LocalPath | None -> "") |> UpdatePathText)
 
-    | UpdatePathText path -> { state with Path = path }, Cmd.none
+    | UpdatePathText path -> { model with Path = path }, Cmd.none
 
-    | StartLoad -> loadStart state
+    | StartLoad ->
+        loadStart { model with CurrentFile = None }
     | ProgressUpdate (progress, context) ->
         let state = 
-            { state with
+            { model with
                 Progress = Some progress
                 Sprites = if progress.IsComplete then Some progress.SpritesData else None
             }
 
         if not progress.IsComplete then
             state,
-            Cmd.OfAsync.perform
+            Cmd.OfAsync.either
                 context.GetOneAsync
                 ()
                 (function
@@ -203,84 +211,107 @@ let update msg state =
 
                     ProgressUpdate (progress, context)
                 | None -> Unit)
+                (fun exn -> printfn "%A" exn; Unit)
         else
             (context :> System.IDisposable).Dispose()
             { state with Sprites = Some progress.SpritesData }, Cmd.ofMsg Complete
     | StatusMessage message ->
         printfn "%s" message
-        { state with StatusMessage = message }, Cmd.none
+        { model with StatusMessage = message }, Cmd.none
     | Complete ->
-        printfn "Complete"
-        { state with Complete = true }, Cmd.none
+        { model with Complete = true; CurrentFile = model.Path |> Some; StatusMessage = "Loading complete" }, Cmd.none
 
-let view (model : Model) (dispatch : Dispatch<Msg>) =
+let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
     let suspecting = tryGetSuspectingIcon()
 
-    StackPanel.create [
-        StackPanel.orientation Orientation.Vertical
-        StackPanel.horizontalAlignment HorizontalAlignment.Stretch
-        StackPanel.verticalAlignment VerticalAlignment.Center
-        StackPanel.margin 4
+    DockPanel.create [
+        DockPanel.lastChildFill true
 
-        StackPanel.children [
-            match suspecting with
-            | Some bitmap ->
-                Image.create [
-                    Image.source bitmap
-                    Image.width bitmap.Size.Width
-                    Image.height bitmap.Size.Height
-                    Image.margin 4
-                ]
-            | None -> ()
+        DockPanel.children [
+            Panel.create [
+                Panel.dock Dock.Left
+                Panel.width (panelLength / 2.0)
+            ]
+            Panel.create [
+                Panel.dock Dock.Right
+                Panel.width panelLength
 
-            DockPanel.create [
-                DockPanel.dock Dock.Top
-                DockPanel.lastChildFill true
-                DockPanel.margin 2
-
-                DockPanel.children [
-                    Button.create [
-                        Button.dock Dock.Right
-                        Button.margin 2
-                        Button.content "Select file..."
-                        Button.onClick (fun _ -> SelectFile |> dispatch)
-
-                        Button.isEnabled (not model.InProgress)
-                    ]
-                    TextBox.create [
-                        TextBox.horizontalAlignment HorizontalAlignment.Stretch
-                        TextBox.margin 2
-                        TextBox.text model.Path
-
-                        TextBox.onTextChanged (UpdatePathText >> dispatch)
-                        TextBox.isEnabled (not model.InProgress)
-                    ]
+                Panel.children [
+                    match suspecting with
+                    | Some bitmap ->
+                        Image.create [
+                            Image.source bitmap
+                            Image.width bitmap.Size.Width
+                            Image.height bitmap.Size.Height
+                            Image.margin 4
+                            Image.verticalAlignment VerticalAlignment.Center
+                            Image.horizontalAlignment HorizontalAlignment.Center
+                        ]
+                    | None -> ()
                 ]
             ]
-            DockPanel.create [
-                DockPanel.dock Dock.Bottom
-                DockPanel.margin 2
-                DockPanel.lastChildFill true
+            StackPanel.create [
+                StackPanel.orientation Orientation.Vertical
+                StackPanel.horizontalAlignment HorizontalAlignment.Stretch
+                StackPanel.verticalAlignment VerticalAlignment.Center
+                StackPanel.margin 4
 
-                DockPanel.children [
-                    Button.create [
-                        Button.dock Dock.Right
-                        Button.margin 2
-                        Button.content "Load sprites"
+                StackPanel.children [
+                    DockPanel.create [
+                        DockPanel.dock Dock.Top
+                        DockPanel.lastChildFill true
+                        DockPanel.margin 2
 
-                        Button.onClick (fun _ -> StartLoad |> dispatch)
-                        Button.isEnabled (not model.InProgress)
+                        DockPanel.children [
+                            Button.create [
+                                Button.dock Dock.Right
+                                Button.margin 2
+                                Button.content "Select file..."
+                                Button.onClick (fun _ -> SelectFile |> dispatch)
+
+                                Button.isEnabled (not model.InProgress)
+                            ]
+                            TextBox.create [
+                                TextBox.horizontalAlignment HorizontalAlignment.Stretch
+                                TextBox.margin 2
+                                TextBox.text model.Path
+
+                                TextBox.onTextChanged (UpdatePathText >> dispatch)
+                                TextBox.isEnabled (not model.InProgress)
+                            ]
+                        ]
                     ]
-                    ProgressBar.create [
-                        ProgressBar.margin 2
-                        ProgressBar.horizontalAlignment HorizontalAlignment.Stretch
-                        let current, max =
-                            match model.Progress with
-                            | Some p -> p.Current, p.Total
-                            | None -> 0, 1
+                    DockPanel.create [
+                        DockPanel.dock Dock.Bottom
+                        DockPanel.margin 2
+                        DockPanel.lastChildFill true
 
-                        ProgressBar.maximum max
-                        ProgressBar.value current
+                        DockPanel.children [
+                            Button.create [
+                                Button.dock Dock.Right
+                                Button.margin 2
+                                Button.content "Load sprites"
+
+                                Button.onClick (fun _ -> StartLoad |> dispatch)
+                                Button.isEnabled (not model.InProgress)
+                            ]
+                            ProgressBar.create [
+                                ProgressBar.margin 2
+                                ProgressBar.horizontalAlignment HorizontalAlignment.Stretch
+                                let current, max =
+                                    match model.Progress with
+                                    | Some p -> p.Current, p.Total
+                                    | None -> 0, 1
+
+                                ProgressBar.maximum max
+                                ProgressBar.value current
+                            ]
+                        ]
+                    ]
+                    TextBlock.create [
+                        TextBlock.horizontalAlignment HorizontalAlignment.Center
+
+                        TextBlock.text model.StatusMessage
                     ]
                 ]
             ]

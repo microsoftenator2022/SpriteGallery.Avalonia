@@ -69,6 +69,7 @@ let update msg (model : Model) =
     match msg with
     | Unit -> model, Cmd.none
     | UpdateSprites sprites ->
+        printfn "%A" msg
         { model with Sprites = sprites }, Cmd.ofMsg Refresh
     | Refresh -> { model with Refresh = model.Refresh + 1 }, Cmd.ofMsg Unit
     | SelectedSpriteChanged s ->
@@ -104,21 +105,21 @@ let view model dispatch =
         |> ScrollViewer.content
     ]
 
-let private subscriptions (updateSprites : System.IObservable<SpritesData option>) (_ : Model) : Sub<Msg> =
-    let updateSpritesSub dispatch =
-        updateSprites.Subscribe(UpdateSprites >> dispatch)
+// let private subscriptions (updateSprites : System.IObservable<SpritesData option>) (_ : Model) : Sub<Msg> =
+//     let updateSpritesSub dispatch =
+//         updateSprites.Subscribe(fun s -> printfn "%A sprites" (s |> Option.map (fun s -> s.Sprites.Length));  s |> (UpdateSprites >> dispatch))
 
-    [
-        [nameof updateSpritesSub], updateSpritesSub
-    ]
+//     [
+//         [nameof updateSpritesSub], updateSpritesSub
+//     ]
 
-let viewComponent spritesData highlightBrush onSpriteSelected updateSprites window =
+let viewComponent spritesData highlightBrush onSpriteSelected window =
     Component.create ("grid-component", fun ctx ->
         let model, dispatch = ctx.useElmish(
             (fun (spritesData, highlightBrush, onSpriteSelected, window) -> init spritesData highlightBrush onSpriteSelected window, Cmd.none),
             update,
-            (spritesData, highlightBrush, onSpriteSelected, window),
-            Program.withSubscription (subscriptions updateSprites)
+            (spritesData, highlightBrush, onSpriteSelected, window)
+            // , Program.withSubscription (subscriptions updateSprites)
         )
 
         view model dispatch
