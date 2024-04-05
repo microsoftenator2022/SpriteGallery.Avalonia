@@ -8,6 +8,7 @@ A ground-up rewrite of [SpriteGallery](https://github.com/microsoftenator2022/Sp
 - Better bundle loading based on UnityDataTools
 - Loads bundle dependencies
 - BlueprintReferencedAssets for all bundles
+- Works with Warhammer 40K: Rogue Trader and Pathfinder: Wrath of the Righteous
 
 ### Currently missing or planned (WIP)
 - Search/filter
