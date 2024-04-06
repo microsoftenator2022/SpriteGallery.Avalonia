@@ -131,7 +131,7 @@ module App =
                     GridView.viewComponent
                         model.LoadFileState.Sprites
                         model.Colors.HighlightBrushOrDefault
-                        model.SpriteSelected.Trigger
+                        model.SpriteSelected
                         // model.SpritesUpdated.Publish
                         model.Window
                     |> View.withKey (sprintf "%A" model.LoadFileState.CurrentFile)

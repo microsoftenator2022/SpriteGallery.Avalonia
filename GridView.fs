@@ -21,20 +21,38 @@ open SpriteGallery.Avalonia
 open SpriteGallery.Avalonia.Common
 open SpriteGallery.Avalonia.Controls.SpritesGrid
 
+[<RequireQualifiedAccess>]
+type SpritesSort =
+| None
+| PathID
+| Name
+| FileId
+with
+    member this.sort ss =
+        ss
+        |>
+        match this with
+        | None -> id
+        | PathID -> Seq.sortBy _.PathID
+        | Name -> Seq.sortBy _.Name
+        | FileId -> Seq.sortBy (_.BlueprintReference >> function Some (_, fileId) -> fileId | _ -> System.Int64.MaxValue)
+
 type Model =
   { Sprites : SpritesData option
     Refresh : int
     HighlightBrush : IBrush
-    SpriteSelected : Sprite option -> unit
-    Window : Window }
+    OnSpriteSelected : Sprite option -> unit
+    Window : Window
+    SortBy : SpritesSort }
 
 let init spritesData highlightBrush spriteSelected window =
     {
         Sprites = spritesData
         Refresh = 0
         HighlightBrush = highlightBrush
-        SpriteSelected = spriteSelected
+        OnSpriteSelected = spriteSelected
         Window = window
+        SortBy = SpritesSort.None
     }
 
 type Msg =
@@ -43,6 +61,7 @@ type Msg =
 | Refresh
 | SelectedSpriteChanged of Sprite option
 | CopySprite of Sprite
+| SetSortMode of SpritesSort
 
 let copySpriteToClipboard (clipboard : IClipboard, sprite) =
     let source = System.Span(sprite.BaseTexture.Bytes)
@@ -73,7 +92,7 @@ let update msg (model : Model) =
         { model with Sprites = sprites }, Cmd.ofMsg Refresh
     | Refresh -> { model with Refresh = model.Refresh + 1 }, Cmd.ofMsg Unit
     | SelectedSpriteChanged s ->
-        model.SpriteSelected s
+        model.OnSpriteSelected s
         model, Cmd.none
     | CopySprite sprite ->
         model,
@@ -81,45 +100,93 @@ let update msg (model : Model) =
             copySpriteToClipboard
             (TopLevel.GetTopLevel(model.Window).Clipboard, sprite)
             (fun exn -> eprintfn "%A" exn; Unit)
+    | SetSortMode sort ->
+        { model with SortBy = sort }, Cmd.ofMsg Refresh
 
 let view model dispatch =
-    ScrollViewer.create [
-        ScrollViewer.bringIntoViewOnFocusChange false
+    DockPanel.create [
+        DockPanel.lastChildFill true
 
-        SpritesGrid.create [
-            SpritesGrid.horizontalAlignment HorizontalAlignment.Left
-            SpritesGrid.verticalAlignment VerticalAlignment.Top
-            
-            SpritesGrid.sprites
-                (match model.Sprites with
-                | Some sprites -> sprites.Sprites |> List.toArray
-                | None -> Array.empty)
+        DockPanel.children [
+            StackPanel.create [
+                StackPanel.orientation Orientation.Horizontal
+                StackPanel.dock Dock.Top
+                StackPanel.horizontalAlignment HorizontalAlignment.Right
 
-            SpritesGrid.highlightBrush model.HighlightBrush
+                StackPanel.children [
+                    TextBlock.create [
+                        TextBlock.verticalAlignment VerticalAlignment.Center
+                        TextBlock.margin 4
 
-            SpritesGrid.onSelectedSpriteChanged ((fun args -> args.Sprite |> SelectedSpriteChanged |> dispatch), SubPatchOptions.Always)
-            SpritesGrid.onCopySprite ((fun args -> args.Sprite |> Option.iter (CopySprite >> dispatch)), SubPatchOptions.Always)
-               
+                        TextBlock.text "Sort by:"
+                    ]
+
+                    RadioButton.create [
+                        RadioButton.verticalAlignment VerticalAlignment.Center
+                        RadioButton.margin 4
+
+                        RadioButton.groupName "SortRadioButtonGroup"
+                        RadioButton.content "PathID"
+                        RadioButton.isChecked (model.SortBy = SpritesSort.PathID)
+                        RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.PathID |> dispatch)
+                    ]
+                    RadioButton.create [
+                        RadioButton.verticalAlignment VerticalAlignment.Center
+                        RadioButton.margin 4
+
+                        RadioButton.groupName "SortRadioButtonGroup"
+                        RadioButton.content "Name"
+                        RadioButton.isChecked (model.SortBy = SpritesSort.Name)
+                        RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.Name |> dispatch)
+                    ]
+                    RadioButton.create [
+                        RadioButton.verticalAlignment VerticalAlignment.Center
+                        RadioButton.margin 4
+
+                        RadioButton.groupName "SortRadioButtonGroup"
+                        RadioButton.content "Reference FileId"
+                        RadioButton.isChecked (model.SortBy = SpritesSort.FileId)
+                        RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.FileId |> dispatch)
+                    ]
+                ]
+            ]
+            ScrollViewer.create [
+                ScrollViewer.bringIntoViewOnFocusChange false
+
+                SpritesGrid.create [
+                    SpritesGrid.horizontalAlignment HorizontalAlignment.Left
+                    SpritesGrid.verticalAlignment VerticalAlignment.Top
+                    
+                    SpritesGrid.sprites
+                        (match model.Sprites with
+                        | Some sprites -> sprites.Sprites |> model.SortBy.sort |> Seq.toArray
+                        | None -> Array.empty)
+
+                    SpritesGrid.highlightBrush model.HighlightBrush
+
+                    SpritesGrid.onSelectedSpriteChanged ((fun args -> args.Sprite |> SelectedSpriteChanged |> dispatch), SubPatchOptions.Always)
+                    SpritesGrid.onCopySprite ((fun args -> args.Sprite |> Option.iter (CopySprite >> dispatch)), SubPatchOptions.Always)
+                ]
+                |> View.withKey (model.Refresh.ToString())
+                |> ScrollViewer.content
+            ]
         ]
-        |> View.withKey (model.Refresh.ToString())
-        |> ScrollViewer.content
     ]
 
-// let private subscriptions (updateSprites : System.IObservable<SpritesData option>) (_ : Model) : Sub<Msg> =
-//     let updateSpritesSub dispatch =
-//         updateSprites.Subscribe(fun s -> printfn "%A sprites" (s |> Option.map (fun s -> s.Sprites.Length));  s |> (UpdateSprites >> dispatch))
-
+// let private subscriptions (spriteSelected : System.IObservable<Sprite option>) model : Sub<Msg> =
+//     let spriteSelectedSub dispatch =
+//         spriteSelected.Subscribe(SelectSprite >> dispatch)
 //     [
-//         [nameof updateSpritesSub], updateSpritesSub
+//         [nameof spriteSelectedSub], spriteSelectedSub
 //     ]
 
-let viewComponent spritesData highlightBrush onSpriteSelected window =
+let viewComponent spritesData highlightBrush (spriteSelectedEvent : Event<Sprite option>) window =
     Component.create ("grid-component", fun ctx ->
         let model, dispatch = ctx.useElmish(
             (fun (spritesData, highlightBrush, onSpriteSelected, window) -> init spritesData highlightBrush onSpriteSelected window, Cmd.none),
             update,
-            (spritesData, highlightBrush, onSpriteSelected, window)
-            // , Program.withSubscription (subscriptions updateSprites)
+            (spritesData, highlightBrush, spriteSelectedEvent.Trigger, window)
+            // , Program.withSubscription (subscriptions spriteSelectedEvent.Publish)
         )
 
         view model dispatch
