@@ -347,7 +347,7 @@ module AssetLoader =
             sprite
             |> Option.map (fun sprite ->
                 { sprite with
-                    Name = name
+                    Name = name |> Option.defaultValue ""
                     RenderDataKey = renderDataKey
                     SerializedFile = sf.Path
                     PathID = o.Id

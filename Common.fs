@@ -121,7 +121,7 @@ type SpriteTexture (bytes : byte[], size : Avalonia.PixelSize) =
 type Sprite =
   { BaseTexture : SpriteTexture
     Rect : Avalonia.PixelRect
-    Name : string option
+    Name : string
     RenderDataKey : struct (System.Guid * int64) option
     SerializedFile : string
     Container : string
@@ -129,10 +129,13 @@ type Sprite =
     BlueprintReference : (string * int64) option
     mutable ScaledBitmapCache : Avalonia.Media.Imaging.Bitmap array }
 with
+    member this.ReferenceAssetId = this.BlueprintReference |> Option.map fst |> Option.defaultValue ""
+    member this.ReferenceFileId = this.BlueprintReference |> Option.map (snd >> _.ToString()) |> Option.defaultValue ""
+    
     static member Create (texture, rect) =
       { BaseTexture = texture
         Rect = rect
-        Name = None
+        Name = ""
         RenderDataKey = None
         SerializedFile = ""
         Container = ""

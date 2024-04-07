@@ -23,6 +23,7 @@ module App =
     type View =
     | LoadFileView
     | GridView
+    | ListView
 
     type Model =
         {
@@ -122,7 +123,7 @@ module App =
 
         let gridViewTab =
             TabItem.create [
-                TabItem.header "Grid"
+                TabItem.header "Gallery"
                 TabItem.isEnabled model.LoadFileState.Complete
                 TabItem.isSelected (model.View = GridView || model.ChangeToView = Some GridView)
 
@@ -139,6 +140,20 @@ module App =
                 TabItem.onIsSelectedChanged (fun s -> if s then ViewChanged GridView |> dispatch)
             ]
 
+        let listViewTab =
+            TabItem.create [
+                TabItem.header "Details"
+                TabItem.isEnabled model.LoadFileState.Complete
+                TabItem.isSelected (model.View = ListView || model.ChangeToView = Some ListView)
+
+                TabItem.content (
+                    ListView.viewComponent model.LoadFileState.Sprites model.SpriteSelected
+                    |> View.withKey (sprintf "%A" model.LoadFileState.CurrentFile)
+                )
+
+                TabItem.onIsSelectedChanged (fun s -> if s then ViewChanged ListView |> dispatch)
+            ]
+
         View.createGeneric<ExperimentalAcrylicBorder> [
             ExperimentalAcrylicBorder.material (acrylicMaterial model.Colors.AcrylicColorOrDefault)
 
@@ -152,6 +167,7 @@ module App =
                             TabControl.viewItems [
                                 loadTab
                                 gridViewTab
+                                listViewTab
                             ]
                         ]
                         |> splitView model
@@ -186,6 +202,7 @@ type App() =
     override this.Initialize() =
         this.Styles.Add (FluentTheme())
         this.RequestedThemeVariant <- Styling.ThemeVariant.Dark
+        this.Styles.Load "avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"
         
     override this.OnFrameworkInitializationCompleted() =
         match this.ApplicationLifetime with

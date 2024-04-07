@@ -16,6 +16,7 @@
     <Compile Include="SpritesGrid.fs" />
     <Compile Include="GridView.fs" />
     <Compile Include="LoadFileView.fs" />
+    <Compile Include="ListView.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

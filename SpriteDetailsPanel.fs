@@ -137,9 +137,7 @@ let view (state : Model) dispatch =
                                 TextBox.column 1
 
                                 TextBox.text (
-                                    state.Sprite
-                                    |> Option.bind (fun s -> s.Name)
-                                    |> Option.defaultValue ""
+                                    state.Sprite |> Option.map _.Name |> Option.defaultValue ""
                                 )
                             ]
 
