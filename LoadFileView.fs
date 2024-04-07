@@ -169,7 +169,7 @@ let loadStart model =
                 let context = new LoadContext(model.Path, loadDependencies, useBlueprintAssets)
                 context.Start()
 
-                ProgressUpdate ({ Current = 0; Total = 1; SpritesData = SpritesData.init() }, context)
+                ProgressUpdate ({ Current = 0; Total = -1; SpritesData = SpritesData.init() }, context)
                 |> Cmd.ofMsg
             )
         ] |> Cmd.batch
@@ -298,13 +298,16 @@ let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
                             ProgressBar.create [
                                 ProgressBar.margin 2
                                 ProgressBar.horizontalAlignment HorizontalAlignment.Stretch
-                                let current, max =
-                                    match model.Progress with
-                                    | Some p -> p.Current, p.Total
-                                    | None -> 0, 1
-
-                                ProgressBar.maximum max
-                                ProgressBar.value current
+                                
+                                match model.Progress with
+                                | Some p when p.Total <= 0 ->
+                                    ProgressBar.isIndeterminate true
+                                | Some p ->
+                                    ProgressBar.maximum p.Total
+                                    ProgressBar.value p.Current
+                                | None ->
+                                    ProgressBar.maximum 1
+                                    ProgressBar.value 0
                             ]
                         ]
                     ]
