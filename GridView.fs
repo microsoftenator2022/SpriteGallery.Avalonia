@@ -42,17 +42,17 @@ type Model =
     Refresh : int
     HighlightBrush : IBrush
     OnSpriteSelected : Sprite option -> unit
-    Window : Window
+    Clipboard : IClipboard
     SortBy : SpritesSort }
 
-let init spritesData highlightBrush spriteSelected window =
+let init spritesData highlightBrush spriteSelected clipboard =
     {
         Sprites = spritesData
         Refresh = 0
         HighlightBrush = highlightBrush
         OnSpriteSelected = spriteSelected
-        Window = window
-        SortBy = SpritesSort.None
+        Clipboard = clipboard
+        SortBy = SpritesSort.Name
     }
 
 type Msg =
@@ -62,27 +62,6 @@ type Msg =
 | SelectedSpriteChanged of Sprite option
 | CopySprite of Sprite
 | SetSortMode of SpritesSort
-
-let copySpriteToClipboard (clipboard : IClipboard, sprite) =
-    let source = System.Span(sprite.BaseTexture.Bytes)
-    let stride = sprite.BaseTexture.Bitmap.Force().PixelSize.Width * 4
-    let rect = sprite.Rect
-    let dest = Array.zeroCreate<byte> (rect.Width * rect.Height * 4)
-    copyRect source stride rect (System.Span(dest))
-    
-    use bitmap = createBitmap dest sprite.Rect.Size
-    let ms = new System.IO.MemoryStream()
-    
-    bitmap.Save(ms)
-    
-    let pngBytes = ms.ToArray()
-
-    let dataObject = Avalonia.Input.DataObject()
-    
-    dataObject.Set("image/png", pngBytes)
-    
-    Avalonia.Threading.Dispatcher.UIThread.InvokeAsync (fun () -> clipboard.SetDataObjectAsync(dataObject))
-    |> Async.AwaitTask
 
 let update msg (model : Model) =
     match msg with
@@ -98,58 +77,58 @@ let update msg (model : Model) =
         model,
         Cmd.OfAsync.attempt
             copySpriteToClipboard
-            (TopLevel.GetTopLevel(model.Window).Clipboard, sprite)
+            (model.Clipboard, sprite)
             (fun exn -> eprintfn "%A" exn; Unit)
     | SetSortMode sort ->
         { model with SortBy = sort }, Cmd.ofMsg Refresh
 
 let view model dispatch =
-    DockPanel.create [
-        DockPanel.lastChildFill true
+    // DockPanel.create [
+    //     DockPanel.lastChildFill true
 
-        DockPanel.children [
-            StackPanel.create [
-                StackPanel.orientation Orientation.Horizontal
-                StackPanel.dock Dock.Top
-                StackPanel.horizontalAlignment HorizontalAlignment.Right
+    //     DockPanel.children [
+    //         StackPanel.create [
+    //             StackPanel.orientation Orientation.Horizontal
+    //             StackPanel.dock Dock.Top
+    //             StackPanel.horizontalAlignment HorizontalAlignment.Right
 
-                StackPanel.children [
-                    TextBlock.create [
-                        TextBlock.verticalAlignment VerticalAlignment.Center
-                        TextBlock.margin 4
+    //             StackPanel.children [
+    //                 TextBlock.create [
+    //                     TextBlock.verticalAlignment VerticalAlignment.Center
+    //                     TextBlock.margin 4
 
-                        TextBlock.text "Sort by:"
-                    ]
+    //                     TextBlock.text "Sort by:"
+    //                 ]
 
-                    RadioButton.create [
-                        RadioButton.verticalAlignment VerticalAlignment.Center
-                        RadioButton.margin 4
+    //                 RadioButton.create [
+    //                     RadioButton.verticalAlignment VerticalAlignment.Center
+    //                     RadioButton.margin 4
 
-                        RadioButton.groupName "SortRadioButtonGroup"
-                        RadioButton.content "PathID"
-                        RadioButton.isChecked (model.SortBy = SpritesSort.PathID)
-                        RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.PathID |> dispatch)
-                    ]
-                    RadioButton.create [
-                        RadioButton.verticalAlignment VerticalAlignment.Center
-                        RadioButton.margin 4
+    //                     RadioButton.groupName "SortRadioButtonGroup"
+    //                     RadioButton.content "PathID"
+    //                     RadioButton.isChecked (model.SortBy = SpritesSort.PathID)
+    //                     RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.PathID |> dispatch)
+    //                 ]
+    //                 RadioButton.create [
+    //                     RadioButton.verticalAlignment VerticalAlignment.Center
+    //                     RadioButton.margin 4
 
-                        RadioButton.groupName "SortRadioButtonGroup"
-                        RadioButton.content "Name"
-                        RadioButton.isChecked (model.SortBy = SpritesSort.Name)
-                        RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.Name |> dispatch)
-                    ]
-                    RadioButton.create [
-                        RadioButton.verticalAlignment VerticalAlignment.Center
-                        RadioButton.margin 4
+    //                     RadioButton.groupName "SortRadioButtonGroup"
+    //                     RadioButton.content "Name"
+    //                     RadioButton.isChecked (model.SortBy = SpritesSort.Name)
+    //                     RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.Name |> dispatch)
+    //                 ]
+    //                 RadioButton.create [
+    //                     RadioButton.verticalAlignment VerticalAlignment.Center
+    //                     RadioButton.margin 4
 
-                        RadioButton.groupName "SortRadioButtonGroup"
-                        RadioButton.content "Reference FileId"
-                        RadioButton.isChecked (model.SortBy = SpritesSort.FileId)
-                        RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.FileId |> dispatch)
-                    ]
-                ]
-            ]
+    //                     RadioButton.groupName "SortRadioButtonGroup"
+    //                     RadioButton.content "Reference FileId"
+    //                     RadioButton.isChecked (model.SortBy = SpritesSort.FileId)
+    //                     RadioButton.onChecked (fun _ -> SetSortMode SpritesSort.FileId |> dispatch)
+    //                 ]
+    //             ]
+    //         ]
             ScrollViewer.create [
                 ScrollViewer.bringIntoViewOnFocusChange false
 
@@ -170,8 +149,8 @@ let view model dispatch =
                 |> View.withKey (model.Refresh.ToString())
                 |> ScrollViewer.content
             ]
-        ]
-    ]
+    //     ]
+    // ]
 
 // let private subscriptions (spriteSelected : System.IObservable<Sprite option>) model : Sub<Msg> =
 //     let spriteSelectedSub dispatch =
@@ -180,12 +159,12 @@ let view model dispatch =
 //         [nameof spriteSelectedSub], spriteSelectedSub
 //     ]
 
-let viewComponent spritesData highlightBrush (spriteSelectedEvent : Event<Sprite option>) window =
+let viewComponent spritesData highlightBrush (spriteSelectedEvent : Event<Sprite option>) clipboard =
     Component.create ("grid-component", fun ctx ->
         let model, dispatch = ctx.useElmish(
-            (fun (spritesData, highlightBrush, onSpriteSelected, window) -> init spritesData highlightBrush onSpriteSelected window, Cmd.none),
+            (fun (spritesData, highlightBrush, onSpriteSelected, clipboard) -> init spritesData highlightBrush onSpriteSelected clipboard, Cmd.none),
             update,
-            (spritesData, highlightBrush, spriteSelectedEvent.Trigger, window)
+            (spritesData, highlightBrush, spriteSelectedEvent.Trigger, clipboard)
             // , Program.withSubscription (subscriptions spriteSelectedEvent.Publish)
         )
 

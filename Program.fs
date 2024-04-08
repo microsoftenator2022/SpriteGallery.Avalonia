@@ -1,16 +1,18 @@
 ﻿namespace SpriteGallery.Avalonia
 
-open Avalonia
-open Avalonia.Controls
-open Avalonia.Media
-open Avalonia.Themes.Fluent
-
 open Elmish
 
 open Avalonia.FuncUI
 open Avalonia.FuncUI.Hosts
 open Avalonia.FuncUI.Elmish
 open Avalonia.Controls.ApplicationLifetimes
+
+open Avalonia
+open Avalonia.Controls
+open Avalonia.Media
+open Avalonia.Rendering
+open Avalonia.Themes.Fluent
+open Avalonia.VisualTree
 
 open SpriteGallery.Avalonia.Common
 open SpriteGallery.Avalonia.Views
@@ -35,6 +37,8 @@ module App =
             SpriteSelected : Event<Sprite option>
             ChangeToView : View option
         }
+    with
+        member this.Clipboard = TopLevel.GetTopLevel(this.Window).Clipboard
 
     let init (window : Window) =
         let colors = WindowColors.GetColors window
@@ -83,7 +87,6 @@ module App =
                 else []
                 
             model, Cmd.batch (cmd :: cmds)
-            // model, cmd
 
     let panelLength = 400
 
@@ -132,8 +135,7 @@ module App =
                         model.LoadFileState.Sprites
                         model.Colors.HighlightBrushOrDefault
                         model.SpriteSelected
-                        // model.SpritesUpdated.Publish
-                        model.Window
+                        model.Clipboard
                     |> View.withKey (sprintf "%A" model.LoadFileState.CurrentFile)
                 )
 
@@ -147,7 +149,7 @@ module App =
                 TabItem.isSelected (model.View = ListView || model.ChangeToView = Some ListView)
 
                 TabItem.content (
-                    ListView.viewComponent model.LoadFileState.Sprites model.SpriteSelected
+                    ListView.viewComponent model.LoadFileState.Sprites model.SpriteSelected model.Clipboard
                     |> View.withKey (sprintf "%A" model.LoadFileState.CurrentFile)
                 )
 
@@ -176,6 +178,19 @@ module App =
             )
         ]
 
+#if DEBUG
+[<AutoOpen>]
+module DebugExtensions =
+    type IRenderer with
+        member this.Diagnostics = typeof<IRenderer>.GetProperty(nameof(this.Diagnostics)).GetMethod.Invoke(this, [||]) :?> RendererDiagnostics
+    
+    type RendererDiagnostics with
+        member this.EnableOverlay overlay =
+            this.DebugOverlays <- this.DebugOverlays ||| overlay
+        member this.DisableOverlay overlay =
+            this.DebugOverlays <- this.DebugOverlays &&& (~~~overlay)
+#endif
+
 type MainWindow() as this =
     inherit HostWindow()
 
@@ -200,8 +215,14 @@ type App() =
     inherit Application()
 
     override this.Initialize() =
+        let tv =
+            match this.PlatformSettings.GetColorValues().ThemeVariant with
+            | Platform.PlatformThemeVariant.Dark -> Styling.ThemeVariant.Dark
+            | Platform.PlatformThemeVariant.Light -> Styling.ThemeVariant.Light
+            | _ -> Styling.ThemeVariant.Dark
+
         this.Styles.Add (FluentTheme())
-        this.RequestedThemeVariant <- Styling.ThemeVariant.Dark
+        this.RequestedThemeVariant <- tv
         this.Styles.Load "avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"
         
     override this.OnFrameworkInitializationCompleted() =

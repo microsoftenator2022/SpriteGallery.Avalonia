@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationIcon>owlcat_suspecting_framed.ico</ApplicationIcon>

@@ -1,8 +1,8 @@
 module SpriteGallery.Avalonia.Common
 
 open Avalonia.Controls
+open Avalonia.Input.Platform
 open Avalonia.Media
-open Avalonia.FuncUI.DSL
 
 let defaultTileSize = 64
 
@@ -220,3 +220,27 @@ let mutable owlcat_suspecting_icon = None
 let tryGetSuspectingIcon() =
     owlcat_suspecting_icon
     |> Option.orElseWith (fun () -> tryGetIcon "owlcat_suspecting.png")
+
+let copySpriteToClipboard (clipboard : IClipboard, sprite) =
+    let source = System.Span(sprite.BaseTexture.Bytes)
+    let stride = sprite.BaseTexture.Bitmap.Force().PixelSize.Width * 4
+    let rect = sprite.Rect
+    let dest = Array.zeroCreate<byte> (rect.Width * rect.Height * 4)
+    copyRect source stride rect (System.Span(dest))
+    
+    use bitmap = createBitmap dest sprite.Rect.Size
+    let ms = new System.IO.MemoryStream()
+    
+    bitmap.Save(ms)
+    
+    let pngBytes = ms.ToArray()
+
+    let dataObject = Avalonia.Input.DataObject()
+    
+    dataObject.Set("image/png", pngBytes)
+    
+    Avalonia.Threading.Dispatcher.UIThread.InvokeAsync (fun () -> clipboard.SetDataObjectAsync(dataObject))
+    |> Async.AwaitTask
+
+let copyTextToClipboard (clipboard : IClipboard, text) =
+    Avalonia.Threading.Dispatcher.UIThread.InvokeAsync (fun () -> clipboard.SetTextAsync(text)) |> Async.AwaitTask
