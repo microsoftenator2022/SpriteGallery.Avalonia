@@ -1,6 +1,6 @@
 ![image](https://github.com/microsoftenator2022/SpriteGallery.Avalonia/assets/5466817/450c2270-7ca6-4eca-84e9-a0af97cb1571)
 
-A ground-up rewrite of [SpriteGallery](https://github.com/microsoftenator2022/SpriteGallery)
+A ground-up rewrite of [SpriteGallery](https://github.com/microsoftenator2022/Wotr-SpriteGallery)
 
 ## New features
 
