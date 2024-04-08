@@ -2,6 +2,8 @@
 
 A ground-up rewrite of [SpriteGallery](https://github.com/microsoftenator2022/Wotr-SpriteGallery)
 
+Requires .NET 8.0
+
 ## New features
 
 - Cross-platform Avalonia-based UI, now should run on Linux (x86/amd64) and macOS (x64/arm). Currently untested
