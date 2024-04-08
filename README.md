@@ -11,7 +11,4 @@ A ground-up rewrite of [SpriteGallery](https://github.com/microsoftenator2022/Sp
 - Works with Warhammer 40K: Rogue Trader and Pathfinder: Wrath of the Righteous
 
 ### Currently missing or planned (WIP)
-- Search/filter
-- Sorting
-- "Details" table view
 - Sprite atlas viewer
