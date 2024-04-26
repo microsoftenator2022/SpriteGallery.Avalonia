@@ -228,6 +228,12 @@ let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
         DockPanel.lastChildFill true
 
         DockPanel.children [
+            TextBlock.create [
+                TextBlock.dock Dock.Top
+                TextBlock.horizontalAlignment HorizontalAlignment.Right
+                
+                TextBlock.text (appVersionString.ToString())
+            ]
             Panel.create [
                 Panel.dock Dock.Left
                 Panel.width (panelLength / 2.0)

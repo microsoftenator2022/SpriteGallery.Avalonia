@@ -4,6 +4,10 @@ open Avalonia.Controls
 open Avalonia.Input.Platform
 open Avalonia.Media
 
+let appVersionString = 
+    let ass = System.Reflection.Assembly.GetExecutingAssembly()
+    System.Diagnostics.FileVersionInfo.GetVersionInfo(ass.Location).ProductVersion
+
 let defaultTileSize = 64
 
 [<AutoOpen>]
