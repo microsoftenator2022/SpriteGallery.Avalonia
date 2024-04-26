@@ -221,7 +221,7 @@ let tryGetSuspectingIcon() =
     owlcat_suspecting_icon
     |> Option.orElseWith (fun () -> tryGetIcon "owlcat_suspecting.png")
 
-let copySpriteToClipboard (clipboard : IClipboard, sprite) =
+let writePng (stream : System.IO.Stream) sprite =
     let source = System.Span(sprite.BaseTexture.Bytes)
     let stride = sprite.BaseTexture.Bitmap.Force().PixelSize.Width * 4
     let rect = sprite.Rect
@@ -229,9 +229,27 @@ let copySpriteToClipboard (clipboard : IClipboard, sprite) =
     copyRect source stride rect (System.Span(dest))
     
     use bitmap = createBitmap dest sprite.Rect.Size
-    let ms = new System.IO.MemoryStream()
     
-    bitmap.Save(ms)
+    bitmap.Save(stream)
+
+let saveSprite path sprite =
+    use stream = System.IO.File.OpenWrite(path)
+    sprite |> writePng stream
+
+let copySpriteToClipboard (clipboard : IClipboard, sprite) =
+    //let source = System.Span(sprite.BaseTexture.Bytes)
+    //let stride = sprite.BaseTexture.Bitmap.Force().PixelSize.Width * 4
+    //let rect = sprite.Rect
+    //let dest = Array.zeroCreate<byte> (rect.Width * rect.Height * 4)
+    //copyRect source stride rect (System.Span(dest))
+    
+    //use bitmap = createBitmap dest sprite.Rect.Size
+    //let ms = new System.IO.MemoryStream()
+
+    //bitmap.Save(ms)
+    
+    let ms = new System.IO.MemoryStream()
+    sprite |> writePng ms
     
     let pngBytes = ms.ToArray()
 

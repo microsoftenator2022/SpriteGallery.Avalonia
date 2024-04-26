@@ -14,22 +14,42 @@ open Avalonia.Controls
 open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.Media.Imaging
+open Avalonia.Platform.Storage
 
 open SpriteGallery.Avalonia.Common
 
-type Model = { Sprite : Sprite option }
+type Model = { Sprite : Sprite option; Window : Window }
 
 type Msg =
 | Unit
 | SpriteSelected of Sprite option
+| SaveToFile
 
-let init() = { Sprite = None }
+let init window = { Sprite = None; Window = window }
 
 let update msg model =
     match msg with
     | Unit -> model, Cmd.none
     | SpriteSelected sprite ->
         { model with Sprite = sprite }, Cmd.none
+    | SaveToFile ->
+        match model.Sprite with
+        | Some sprite ->
+            model,
+            Cmd.OfAsyncImmediate.perform
+                (model.Window.StorageProvider.SaveFilePickerAsync >> Async.AwaitTask)
+                (FilePickerSaveOptions(
+                    DefaultExtension = "png",
+                    FileTypeChoices = [FilePickerFileTypes.ImagePng],
+                    SuggestedFileName = sprite.Name))
+                (fun path ->
+                    match path |> Option.ofObj with
+                    | Some f ->
+                        sprite |> saveSprite f.Path.LocalPath
+                        Unit
+                    | None -> Unit
+                )
+        | None -> model, Cmd.none
 
 let margin = 4.0
 
@@ -46,7 +66,7 @@ let valueTextBoxStyle = [
     TextBox.horizontalAlignment HorizontalAlignment.Stretch
 ]
 
-let view (state : Model) dispatch =
+let view (model : Model) dispatch =
     DockPanel.create [
         DockPanel.margin 12
         DockPanel.lastChildFill true
@@ -58,20 +78,33 @@ let view (state : Model) dispatch =
 
                 StackPanel.children [
                     Grid.create [
-                        Grid.horizontalAlignment HorizontalAlignment.Right
+                        Grid.horizontalAlignment HorizontalAlignment.Stretch
 
-                        List.init 2 (fun _ -> ColumnDefinition.create ColumnWidth.Auto)
+                        [ColumnWidth.Auto; ColumnWidth.Star 1; ColumnWidth.Auto; ColumnWidth.Auto]
+                        |> List.map ColumnDefinition.create
                         |> Grid.columnDefinitions
 
                         List.init 2 (fun _ -> RowDefinition.create RowHeight.Auto)
                         |> Grid.rowDefinitions
 
                         Grid.children [
+                            Button.create [
+                                Button.row 0
+                                //Button.rowSpan 2
+                                Button.column 0
+
+                                Button.content "Save to file"
+
+                                Button.isEnabled model.Sprite.IsSome
+
+                                Button.onClick (fun _ -> SaveToFile |> dispatch)
+                            ]
+
                             TextBlock.create [
                                 yield! labelTextBlockStyle
                                 
                                 TextBlock.row 0
-                                TextBlock.column 0
+                                TextBlock.column 2
 
                                 TextBlock.text "Width"
                             ]
@@ -80,10 +113,10 @@ let view (state : Model) dispatch =
                                 yield! valueTextBoxStyle
 
                                 TextBox.row 0
-                                TextBox.column 1
+                                TextBox.column 3
 
                                 TextBox.text (
-                                    match state.Sprite with
+                                    match model.Sprite with
                                     | Option.Some s -> s.Rect.Width.ToString()
                                     | None -> ""
                                 )
@@ -93,7 +126,7 @@ let view (state : Model) dispatch =
                                 yield! labelTextBlockStyle
                                 
                                 TextBlock.row 1
-                                TextBlock.column 0
+                                TextBlock.column 2
 
                                 TextBlock.text "Height"
                             ]
@@ -102,10 +135,10 @@ let view (state : Model) dispatch =
                                 yield! valueTextBoxStyle
 
                                 TextBox.row 1
-                                TextBox.column 1
+                                TextBox.column 3
 
                                 TextBox.text (
-                                    match state.Sprite with
+                                    match model.Sprite with
                                     | Option.Some s -> s.Rect.Height.ToString()
                                     | None -> ""
                                 )
@@ -137,7 +170,7 @@ let view (state : Model) dispatch =
                                 TextBox.column 1
 
                                 TextBox.text (
-                                    state.Sprite |> Option.map _.Name |> Option.defaultValue ""
+                                    model.Sprite |> Option.map _.Name |> Option.defaultValue ""
                                 )
                             ]
 
@@ -156,7 +189,7 @@ let view (state : Model) dispatch =
                                 TextBox.column 1
 
                                 TextBox.text (
-                                    match state.Sprite with
+                                    match model.Sprite with
                                     | Some s -> s.Container
                                     | None -> ""
                                 )
@@ -177,7 +210,7 @@ let view (state : Model) dispatch =
                                 TextBox.column 1
 
                                 TextBox.text (
-                                    match state.Sprite with
+                                    match model.Sprite with
                                     | Some s -> s.PathID.ToString()
                                     | None -> ""
                                 )
@@ -208,7 +241,7 @@ let view (state : Model) dispatch =
                                 TextBox.column 1
 
                                 TextBox.text (
-                                    state.Sprite
+                                    model.Sprite
                                     |> Option.bind (fun s -> s.BlueprintReference)
                                     |> Option.map fst
                                     |> Option.defaultValue ""
@@ -230,7 +263,7 @@ let view (state : Model) dispatch =
                                 TextBox.column 1
 
                                 TextBox.text (
-                                    state.Sprite
+                                    model.Sprite
                                     |> Option.bind (fun s -> s.BlueprintReference)
                                     |> Option.map (snd >> string)
                                     |> Option.defaultValue ""
@@ -247,7 +280,7 @@ let view (state : Model) dispatch =
                 Panel.verticalAlignment VerticalAlignment.Stretch
 
                 Panel.children [
-                    match state.Sprite with
+                    match model.Sprite with
                     | Some sprite ->
                         yield
                             Viewbox.create [
@@ -282,8 +315,8 @@ let private subscriptions (spriteSelected : System.IObservable<Sprite option>) m
         [nameof spriteSelectedSub], spriteSelectedSub
     ]
 
-let viewComponent spriteSelected = Component.create ("sprite-details", fun ctx ->
-    let model, dispatch = ctx.useElmish((fun () -> init(), Cmd.none), update, (), Program.withSubscription (subscriptions spriteSelected))
+let viewComponent spriteSelected window = Component.create ("sprite-details", fun ctx ->
+    let model, dispatch = ctx.useElmish((fun window -> init window, Cmd.none), update, window, Program.withSubscription (subscriptions spriteSelected))
 
     view model dispatch
 )

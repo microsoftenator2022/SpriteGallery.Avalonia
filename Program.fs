@@ -103,7 +103,7 @@ module App =
                     ExperimentalAcrylicBorder.material (acrylicMaterial model.Colors.PanelAcrylicColorOrDefault)
 
                     ExperimentalAcrylicBorder.child (
-                        SpriteDetailsPanel.viewComponent model.SpriteSelected.Publish
+                        SpriteDetailsPanel.viewComponent model.SpriteSelected.Publish model.Window
                     )
                 ]
             )
