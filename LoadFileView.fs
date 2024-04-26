@@ -141,7 +141,7 @@ let init window =
 type Msg =
 | Unit
 | SelectFile
-| UpdatePathText of string
+| UpdatePathText of string option
 | StartLoad
 | ProgressUpdate of Progress * LoadContext
 | StatusMessage of string
@@ -183,9 +183,9 @@ let update msg model =
         Cmd.OfAsyncImmediate.perform
             (model.Window.StorageProvider.OpenFilePickerAsync >> Async.AwaitTask)
             (Platform.Storage.FilePickerOpenOptions(AllowMultiple = false))
-            (fun f -> f |> Seq.tryHead |> (function Some path -> path.Path.LocalPath | None -> "") |> UpdatePathText)
+            (fun f -> f |> Seq.tryHead |> (Option.map (fun path -> path.Path.LocalPath)) |> UpdatePathText)
 
-    | UpdatePathText path -> { model with Path = path }, Cmd.none
+    | UpdatePathText path -> { model with Path = path |> Option.defaultValue model.Path }, Cmd.none
 
     | StartLoad ->
         loadStart { model with CurrentFile = None }
@@ -232,11 +232,15 @@ let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
                 Panel.dock Dock.Left
                 Panel.width (panelLength / 2.0)
             ]
-            Panel.create [
-                Panel.dock Dock.Right
-                Panel.width panelLength
+            StackPanel.create [
+                StackPanel.dock Dock.Right
+                StackPanel.width panelLength
+                StackPanel.verticalAlignment VerticalAlignment.Center
+                StackPanel.horizontalAlignment HorizontalAlignment.Center
+                
+                StackPanel.orientation Orientation.Vertical
 
-                Panel.children [
+                StackPanel.children [
                     match suspecting with
                     | Some bitmap ->
                         Image.create [
@@ -248,6 +252,45 @@ let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
                             Image.horizontalAlignment HorizontalAlignment.Center
                         ]
                     | None -> ()
+
+                    Grid.create [
+                        Grid.verticalAlignment VerticalAlignment.Center
+                        Grid.horizontalAlignment HorizontalAlignment.Center
+                        Grid.margin 4
+                        Grid.columnDefinitions (List.init 2 (fun _ -> ColumnDefinition.create ColumnWidth.Auto))
+                        Grid.rowDefinitions (List.init 2 (fun _ -> RowDefinition.create RowHeight.Auto))
+
+                        Grid.children [
+                            TextBlock.create [
+                                TextBlock.margin 4
+                                TextBlock.column 0
+                                TextBlock.row 0
+                                
+                                TextBlock.text "Arrows"
+                            ]
+                            TextBlock.create [
+                                TextBlock.margin 4
+                                TextBlock.column 1
+                                TextBlock.row 0
+                                
+                                TextBlock.text "Move selection"
+                            ]
+                            TextBlock.create [
+                                TextBlock.margin 4
+                                TextBlock.column 0
+                                TextBlock.row 1
+                                
+                                TextBlock.text "Ctrl+C"
+                            ]
+                            TextBlock.create [
+                                TextBlock.margin 4
+                                TextBlock.column 1
+                                TextBlock.row 1
+                                
+                                TextBlock.text "Copy to clipboard"
+                            ]
+                        ]
+                    ]
                 ]
             ]
             StackPanel.create [
@@ -276,7 +319,7 @@ let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
                                 TextBox.margin 2
                                 TextBox.text model.Path
 
-                                TextBox.onTextChanged (UpdatePathText >> dispatch)
+                                TextBox.onTextChanged (Some >> UpdatePathText >> dispatch)
                                 TextBox.isEnabled (not model.InProgress)
                             ]
                         ]
