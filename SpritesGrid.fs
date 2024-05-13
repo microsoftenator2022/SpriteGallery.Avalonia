@@ -46,7 +46,7 @@ let calculateSize (tileSize : float) (margin : float) tileCount (size : Size) =
 let arBias = 0.25
 
 let generateLayout (sprites : Sprite seq) columns (tileSize : float) =
-    // printfn "generating %i column layout" columns
+    // printfn "generating %i column layout for %i sprites" columns (sprites |> Seq.length)
     let layout =
         seq {
             let mutable ci = 0

@@ -4,7 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationIcon>owlcat_suspecting_framed.ico</ApplicationIcon>
-    <VersionPrefix>1.0.1</VersionPrefix>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <IncludeSourceRevisionInInformationalVersion Condition=" '$(Configuration)' == 'Release' ">false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>

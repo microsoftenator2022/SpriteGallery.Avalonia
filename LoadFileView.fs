@@ -22,96 +22,166 @@ open MicroUtils.Interop
 
 open SpriteGallery.Avalonia.Common
 
-// TODO improvments:
-// 1. GetOneAsync() -> GetSpriteAsync(pathId) (or PPtr?)
-// 2. If opening blueprint.assets, read BlueprintReferencedAssets sprites from *all* referenced bundles
-// 3. Filter objects with random access reader instead of reading entire objects
-type LoadContext (filePath : string, loadDependencies, loadBlueprintAssets) =
-    let dir = System.IO.Path.GetDirectoryName filePath
-    let baPath = System.IO.Path.Join(dir, "blueprint.assets")
+module AssetLoadService =
+    type LoadContext =
+      { SpriteKeys : (string * UnityDataTools.FileSystem.ObjectInfo) array
+        Sprites : Map<string * int64, Sprite>;
+        Textures : Map<string * int64, SpriteTexture> }
 
-    let mutable started = false
-    let mutable spriteCount = 0
-    let mutable complete = false
-    let mutable spritesData = { Sprites = []; Textures = Map.empty }
+    type Message =
+    | Noop
+    | Init
+    | Cleanup
+    | LoadArchive of string
+    | GetSprite of (string * UnityDataTools.FileSystem.ObjectInfo)
 
-    let newWaitHandle() = new EventWaitHandle(false, EventResetMode.AutoReset)
-    let mutable waitHandle = lazy(newWaitHandle())
-    let spriteUpdate = Event<Sprite option>()
+    let mutable private message : Message = Noop
+    let mutable private thread : Thread option = None
 
-    let loadProc() =
-        started <- true
+    let dir (filePath : string) = System.IO.Path.GetDirectoryName filePath
+    let baPath dir = System.IO.Path.Join(dir, "blueprint.assets")
 
-        AssetLoader.init()
-        try
-            try
-                let archive =
-                    if loadDependencies then
-                        AssetLoader.mountArchiveWithDependencies filePath |> fst
-                    else AssetLoader.mountArchive filePath
+    let mutable private messageSent = new EventWaitHandle(false, EventResetMode.AutoReset)
+    let mutable private notifCompleted = new EventWaitHandle(false, EventResetMode.AutoReset)
 
-                if loadBlueprintAssets then    
-                    AssetLoader.mountArchive baPath |> ignore
-                
-                let spriteObjectInfos = AssetLoader.getSpriteObjectsInArchive archive
+    let mutable private result : Sprite option = None
+    let tryGetResult() =
+        let sprite = result
+        result <- None
+        sprite
 
-                spriteCount <- spriteObjectInfos.Length
+    let mutable private exited = false
+    let mutable status = { SpriteKeys = Array.empty; Sprites = Map.empty; Textures = Map.empty }
+    let initData keys = { SpriteKeys = keys; Sprites = Map.empty; Textures = Map.empty }
 
-                for (sfPath, o) in spriteObjectInfos do
-                    waitHandle.Force().WaitOne() |> ignore
-                    
+    // let mutable private spriteObjectInfos = None
+    let private loadArchive filePath blueprintReferencedAssetsPath =
+        let archive = AssetLoader.mountArchiveWithDependencies filePath |> fst
+        
+        AssetLoader.mountArchive blueprintReferencedAssetsPath |> ignore
+        
+        AssetLoader.getSpriteObjectsInArchive archive |> initData
+
+    let rec private handleNext() =
+        let handleNext notif =
+            if notif then notifCompleted.Set() |> ignore
+            handleNext()
+        
+        messageSent.WaitOne() |> ignore
+        let m = message
+        
+        match m with
+        | Noop -> handleNext false
+        | Init ->
+            AssetLoader.init()
+            handleNext true
+        | LoadArchive path ->
+            status <- loadArchive path (path |> dir |> baPath)
+            handleNext true
+        | GetSprite (sfPath, o) ->
+            let sprite =
+                status.Sprites
+                |> Map.tryFind (sfPath, o.Id)
+                |> Option.orElseWith(fun () ->
                     let sf = AssetLoader.getSerializedFile sfPath |> toOption
                     let sprite = sf |> Option.bind (fun sf -> AssetLoader.getSprite o sf)
 
-                    spritesData <-
-                        let spritesData = { spritesData with Textures = AssetLoader.textures }
+                    status <-
+                        let sd = { status with Textures = AssetLoader.textures }
 
                         match sprite with
-                        | Some sprite -> { spritesData with Sprites = sprite :: spritesData.Sprites }
-                        | None -> spritesData
+                        | Some sprite -> { sd with Sprites = sd.Sprites |> Map.add (sfPath, o.Id) sprite }
+                        | None -> sd
 
-                    spriteUpdate.Trigger sprite
-            finally
-                AssetLoader.cleanup()
-        with
-            e ->
-                eprintfn "%A" e
+                    sprite)
+
+            result <- sprite
+            handleNext true
+            
+        | Cleanup ->
+            AssetLoader.cleanup()
+
+    let private logException exn =
+        exn |> sprintf "%A" |> log
+
+    let private serviceProc() =
+        messageSent.Reset() |> ignore
+        notifCompleted.Reset() |> ignore
+
+        try
+            try
+                exited <- false
+                handleNext()
+            with
+            | e ->
+                logException e
                 reraise()
 
-        complete <- true
+        finally
+            exited <- true
+            message <- Noop
+            result <- None
 
-        spriteUpdate.Trigger None
+            messageSent.Dispose()
+            messageSent <- new EventWaitHandle(false, EventResetMode.AutoReset)
 
-    let thread =
-        let thread = ThreadStart(loadProc) |> Thread
-        thread.IsBackground <- true
-        thread
+            notifCompleted.Dispose()
+            notifCompleted <- new EventWaitHandle(false, EventResetMode.AutoReset)
 
-    member _.Count = spriteCount
-    member _.SpritesData = spritesData
-    member _.Complete = complete
+            thread <- None
 
-    [<CLIEvent>]
-    member private _.spriteUpdateEvent = spriteUpdate.Publish
+    let mutable private started = false
+    let startThread() =
+        let t = ThreadStart(serviceProc) |> Thread
+        t.IsBackground <- true
+        thread <- Some t
 
-    member _.Start() =
-        thread.Start()
+        t.Start()
 
-    member this.GetOneAsync() = async {
-        waitHandle.Force().Set() |> ignore
+        started <- true
 
-        return! this.spriteUpdateEvent |> Async.AwaitEvent
+    let running() = started && not exited
+
+    let private sendMessage m =
+        message <- m
+        if messageSent.Set() |> not then failwith "Could not signal asset load service"
+
+    let initAsync() = async {
+        if not (running()) then
+            startThread()
+
+        Message.Init |> sendMessage
+
+        return! Async.AwaitWaitHandle notifCompleted |> Async.Ignore
     }
 
-    interface System.IDisposable with
-        member _.Dispose() =
-            if waitHandle.IsValueCreated then
-                waitHandle.Value.Dispose()
-                waitHandle <- lazy(newWaitHandle())
+    let loadArchiveAsync path = async {
+        sprintf "load archive %s" path |> log
+        Message.LoadArchive path |> sendMessage
 
-type Progress = { Current : int; Total : int; SpritesData : SpritesData }
+        let! _ = Async.AwaitWaitHandle notifCompleted |> Async.Ignore
+
+        return status
+    }
+
+    let tryGetSpriteAsync (sfPath, o) = async {
+        GetSprite (sfPath, o) |> sendMessage
+
+        let! _ = Async.AwaitWaitHandle notifCompleted |> Async.Ignore
+
+        return tryGetResult()
+    }
+
+    let cleanup() =
+        sendMessage Cleanup
+
+type Progress = { Current : int; LoadStatus : AssetLoadService.LoadContext }
 with
+    member this.Total =
+        let keyCount = this.LoadStatus.SpriteKeys.Length
+        if keyCount = 0 then -1 else keyCount
     member this.IsComplete = this.Current = this.Total
+    static member init() = { Current = 0; LoadStatus = AssetLoadService.initData [||] }
 
 type Model =
   { Path : string
@@ -143,41 +213,34 @@ type Msg =
 | SelectFile
 | UpdatePathText of string option
 | StartLoad
-| ProgressUpdate of Progress * LoadContext
+| ProgressUpdate of Progress
 | StatusMessage of string
 | Complete
+| CancelLoad
+| Error of string
 
 let loadStart model =
-    let dir = System.IO.Path.GetDirectoryName model.Path
-    let baPath = System.IO.Path.Join(dir, "blueprint.assets")
-
-    let useBlueprintAssets = System.IO.File.Exists baPath
-    let loadDependencies = System.IO.Path.Join(dir, "dependencylist.json") |> System.IO.File.Exists
-
     if System.IO.File.Exists model.Path |> not then
         { model with StatusMessage = sprintf "'%s' does not exist" model.Path }, Cmd.none
-    // elif state.LoadBlueprintAssets && System.IO.File.Exists baPath |> not then
-    //     { state with StatusMessage = sprintf "'%s' does not exist" baPath }, Cmd.none
     else
-        model,
+        { model with Progress = Progress.init() |> Some },
         [
-            StatusMessage "Loading sprites"
-            |> Cmd.ofMsg
+            Cmd.ofMsg (StatusMessage "Loading sprites")
+            Cmd.OfAsync.perform
+                (fun path -> async {
+                    let! _ = AssetLoadService.initAsync()
 
-            (
-                // let context = new LoadContext(state.Path, state.LoadDependencies, state.LoadBlueprintAssets)
-                let context = new LoadContext(model.Path, loadDependencies, useBlueprintAssets)
-                context.Start()
+                    let! spritesData = AssetLoadService.loadArchiveAsync path
 
-                ProgressUpdate ({ Current = 0; Total = -1; SpritesData = SpritesData.init() }, context)
-                |> Cmd.ofMsg
-            )
+                    return { Current = 0; LoadStatus = spritesData }
+                })
+                model.Path
+                ProgressUpdate
         ] |> Cmd.batch
 
 let update msg model =
     match msg with
     | Unit -> model, Cmd.none
-
     | SelectFile ->
         model,
         Cmd.OfAsyncImmediate.perform
@@ -186,40 +249,53 @@ let update msg model =
             (fun f -> f |> Seq.tryHead |> (Option.map (fun path -> path.Path.LocalPath)) |> UpdatePathText)
 
     | UpdatePathText path -> { model with Path = path |> Option.defaultValue model.Path }, Cmd.none
-
-    | StartLoad ->
-        loadStart { model with CurrentFile = None }
-    | ProgressUpdate (progress, context) ->
-        let state = 
+    | StartLoad -> loadStart { model with CurrentFile = None }
+    | CancelLoad -> { model with Progress = None }, Cmd.none
+    | Error errorMessage -> model, Cmd.batch [Cmd.ofMsg CancelLoad; Cmd.ofMsg (StatusMessage errorMessage)]
+    | ProgressUpdate progress ->
+        let progress = { progress with LoadStatus = AssetLoadService.status }
+        let model = 
             { model with
                 Progress = Some progress
-                Sprites = if progress.IsComplete then Some progress.SpritesData else None
+                Sprites =
+                    Some {
+                        Textures = progress.LoadStatus.Textures
+                        Sprites = progress.LoadStatus.Sprites.Values
+                    }
             }
 
         if not progress.IsComplete then
-            state,
+            model,
             Cmd.OfAsync.either
-                context.GetOneAsync
-                ()
-                (function
-                | Some sprite ->
-                    let progress =
-                        { progress with
-                            Current = progress.Current + 1
-                            Total = context.Count
-                            SpritesData = context.SpritesData }
+                (fun key -> async {
+                    match! AssetLoadService.tryGetSpriteAsync key with
+                    | Some sprite ->
+                        sprintf "Got sprite %s" sprite.Name |> log
+                        return { progress with Current = progress.Current + 1; }
+                    | None ->
+                        return
+                            sprintf "Could not get sprite %A" progress.LoadStatus.SpriteKeys[progress.Current]
+                            |> failwith
+                })
+                progress.LoadStatus.SpriteKeys[progress.Current]
+                ProgressUpdate
+                (fun exn -> Error exn.Message)
+            else
+                { model with
+                    Sprites =
+                        Some {
+                            Sprites = progress.LoadStatus.Sprites |> Map.values
+                            Textures = progress.LoadStatus.Textures
+                        }
+                }, Cmd.ofMsg Complete
 
-                    ProgressUpdate (progress, context)
-                | None -> Unit)
-                (fun exn -> eprintfn "%A" exn; Unit)
-        else
-            (context :> System.IDisposable).Dispose()
-            { state with Sprites = Some progress.SpritesData }, Cmd.ofMsg Complete
     | StatusMessage message ->
         printfn "%s" message
         { model with StatusMessage = message }, Cmd.none
     | Complete ->
-        { model with Complete = true; CurrentFile = model.Path |> Some; StatusMessage = "Loading complete" }, Cmd.none
+        let model = { model with Complete = true; CurrentFile = model.Path |> Some; StatusMessage = "Loading complete" }
+        AssetLoadService.cleanup()
+        model, Cmd.none
 
 let view panelLength (model : Model) (dispatch : Dispatch<Msg>) =
     let suspecting = tryGetSuspectingIcon()

@@ -18,7 +18,7 @@ type MicroOption<'a> = MicroUtils.Functional.Option<'a>
 
 type BlueprintAssetReference = { AssetID : string; FileID : int64 }
 
-[<RequireQualifiedAccessAttribute>]
+[<RequireQualifiedAccess>]
 module AssetLoader =
     let private initReaderCache() = new System.Threading.ThreadLocal<(string * UnityBinaryFileReader)[]>((fun () -> [||]), true)
     let mutable private readers = initReaderCache()

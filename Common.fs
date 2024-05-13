@@ -8,6 +8,26 @@ let appVersionString =
     let ass = System.Reflection.Assembly.GetExecutingAssembly()
     System.Diagnostics.FileVersionInfo.GetVersionInfo(ass.Location).ProductVersion
 
+let mutable logStream : System.IO.StreamWriter option = None
+let openLog() =
+    let assLocation = System.Reflection.Assembly.GetExecutingAssembly().Location
+    let filePath =
+        System.IO.Path.Join(System.IO.Path.GetDirectoryName(assLocation), "log.txt")
+    let stream = System.IO.File.CreateText(filePath)
+    logStream <- Some(stream)
+
+    stream
+
+let closeLog() =
+    logStream |> Option.iter (fun s -> s.Dispose())
+    logStream <- None
+
+let log (message : string) =
+    let s = logStream |> Option.defaultWith(fun () -> openLog())
+
+    s.WriteLine(message)
+    s.Flush()
+
 let defaultTileSize = 64
 
 [<AutoOpen>]
