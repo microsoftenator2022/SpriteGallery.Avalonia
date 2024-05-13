@@ -52,7 +52,7 @@ module AssetLoadService =
 
     let mutable private exited = false
     let mutable status = { SpriteKeys = Array.empty; Sprites = Map.empty; Textures = Map.empty }
-    let initData keys = { SpriteKeys = keys; Sprites = Map.empty; Textures = Map.empty }
+    let initStatus keys = { SpriteKeys = keys; Sprites = Map.empty; Textures = Map.empty }
 
     // let mutable private spriteObjectInfos = None
     let private loadArchive filePath blueprintReferencedAssetsPath =
@@ -60,12 +60,10 @@ module AssetLoadService =
         
         AssetLoader.mountArchive blueprintReferencedAssetsPath |> ignore
         
-        AssetLoader.getSpriteObjectsInArchive archive |> initData
+        AssetLoader.getSpriteObjectsInArchive archive |> initStatus
 
-    let rec private handleNext() =
-        let handleNext notif =
-            if notif then notifCompleted.Set() |> ignore
-            handleNext()
+    let rec private handleNext notif =
+        if notif then notifCompleted.Set() |> ignore
         
         messageSent.WaitOne() |> ignore
         let m = message
@@ -111,7 +109,7 @@ module AssetLoadService =
         try
             try
                 exited <- false
-                handleNext()
+                handleNext false
             with
             | e ->
                 logException e
@@ -150,6 +148,10 @@ module AssetLoadService =
         if not (running()) then
             startThread()
 
+        while (not(running())) do
+            let! _ = Async.Sleep(100)
+            ()
+
         Message.Init |> sendMessage
 
         return! Async.AwaitWaitHandle notifCompleted |> Async.Ignore
@@ -181,7 +183,7 @@ with
         let keyCount = this.LoadStatus.SpriteKeys.Length
         if keyCount = 0 then -1 else keyCount
     member this.IsComplete = this.Current = this.Total
-    static member init() = { Current = 0; LoadStatus = AssetLoadService.initData [||] }
+    static member init() = { Current = 0; LoadStatus = AssetLoadService.initStatus [||] }
 
 type Model =
   { Path : string
