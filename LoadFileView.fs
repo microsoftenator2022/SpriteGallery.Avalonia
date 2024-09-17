@@ -1,6 +1,8 @@
 [<RequireQualifiedAccess>]
 module SpriteGallery.Avalonia.Views.LoadFileView
 
+open System.Threading
+
 open Elmish
 
 open Avalonia.FuncUI.DSL
@@ -14,14 +16,17 @@ open Avalonia.Layout
 open Avalonia.Media
 open Avalonia.VisualTree
 
-open SpriteGallery.Avalonia
-
-open System.Threading
-
 open MicroUtils.Interop
 
+open SpriteGallery.Avalonia
 open SpriteGallery.Avalonia.Common
 
+// Notes:
+// 1. UnityDataTools API seems to behave predictably only when accessed from a single thread
+// 2. The UI may send requests faster than this service can respond
+// Therefore:
+// 1. Create a dedicated thread (do not use a threadpool)
+// 2. The UI must wait for a response before sending another request
 module AssetLoadService =
     type LoadContext =
       { SpriteKeys : (string * UnityDataTools.FileSystem.ObjectInfo) array

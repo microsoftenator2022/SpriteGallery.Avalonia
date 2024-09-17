@@ -3,6 +3,7 @@ module SpriteGallery.Avalonia.Common
 open Avalonia.Controls
 open Avalonia.Input.Platform
 open Avalonia.Media
+open System.Runtime.InteropServices
 
 let appVersionString = 
     let ass = System.Reflection.Assembly.GetExecutingAssembly()
@@ -112,7 +113,7 @@ let copyRect (textureBytes : System.Span<byte>) stride (rect : Avalonia.PixelRec
         source.CopyTo(destLine)
 
 let createBitmap bytes size =
-    let handle = System.Runtime.InteropServices.GCHandle.Alloc(bytes)
+    let handle = System.Runtime.InteropServices.GCHandle.Alloc(bytes, GCHandleType.Pinned)
     
     try
         let bitmap =
@@ -156,16 +157,28 @@ with
     member this.ReferenceAssetId = this.BlueprintReference |> Option.map fst |> Option.defaultValue ""
     member this.ReferenceFileId = this.BlueprintReference |> Option.map (snd >> _.ToString()) |> Option.defaultValue ""
     
-    static member Create (texture, rect) =
-      { BaseTexture = texture
-        Rect = rect
-        Name = ""
-        RenderDataKey = None
-        SerializedFile = ""
-        Container = ""
-        PathID = 0
-        BlueprintReference = None
-        ScaledBitmapCache = [||] }
+    static member Create ((texture : SpriteTexture), (rect : Avalonia.PixelRect)) =
+        let rect =
+            if (rect.X + rect.Width) > texture.Size.Width then
+                rect.WithWidth(texture.Size.Width - rect.X)
+            else rect
+
+        let rect =
+            if (rect.Y + rect.Height) > texture.Size.Height then
+                rect.WithHeight(texture.Size.Height - rect.Y)
+            else rect
+        
+        {
+            BaseTexture = texture
+            Rect = rect
+            Name = ""
+            RenderDataKey = None
+            SerializedFile = ""
+            Container = ""
+            PathID = 0
+            BlueprintReference = None
+            ScaledBitmapCache = [||]
+        }
 
     interface System.IDisposable with
         member this.Dispose() =

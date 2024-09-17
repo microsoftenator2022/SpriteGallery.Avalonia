@@ -1,10 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <ApplicationIcon>owlcat_suspecting_framed.ico</ApplicationIcon>
-    <VersionPrefix>1.1.0</VersionPrefix>
+    <VersionPrefix>1.1.1</VersionPrefix>
     <IncludeSourceRevisionInInformationalVersion Condition=" '$(Configuration)' == 'Release' ">false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
