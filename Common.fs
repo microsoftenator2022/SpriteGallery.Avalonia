@@ -24,6 +24,10 @@ let closeLog() =
     logStream <- None
 
 let log (message : string) =
+    #if DEBUG
+    System.Diagnostics.Debug.Print message
+    #endif
+
     let s = logStream |> Option.defaultWith(fun () -> openLog())
 
     s.WriteLine(message)
@@ -158,15 +162,28 @@ with
     member this.ReferenceFileId = this.BlueprintReference |> Option.map (snd >> _.ToString()) |> Option.defaultValue ""
     
     static member Create ((texture : SpriteTexture), (rect : Avalonia.PixelRect)) =
-        let rect =
-            if (rect.X + rect.Width) > texture.Size.Width then
-                rect.WithWidth(texture.Size.Width - rect.X)
-            else rect
+        //let rect =
+        //    if (rect.X + rect.Width) > texture.Size.Width then
+        //        rect.WithWidth(texture.Size.Width - rect.X)
+        //    else rect
 
-        let rect =
-            if (rect.Y + rect.Height) > texture.Size.Height then
-                rect.WithHeight(texture.Size.Height - rect.Y)
-            else rect
+        //let rect =
+        //    if (rect.Y + rect.Height) > texture.Size.Height then
+        //        rect.WithHeight(texture.Size.Height - rect.Y)
+        //    else rect
+
+        //let rect =
+        //    if rect.X < 0 then
+        //        rect.WithWidth(rect.Width + rect.X).WithX(0)
+        //    else rect
+
+        //let rect =
+        //    if rect.Y < 0 then
+        //        rect.WithHeight(rect.Height + rect.Y).WithY(0)
+        //    else rect
+
+        if rect.Height < 0 || rect.Width < 0 then
+            System.ArgumentOutOfRangeException("Invalid texture rect") |> raise
         
         {
             BaseTexture = texture

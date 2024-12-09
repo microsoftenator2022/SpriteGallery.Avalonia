@@ -2,10 +2,10 @@ module MicroUtils.Interop
 
 open MicroUtils
 
-type MicroOption<'a> = Functional.Option<'a>
+type MicroOption<'a> = Types.Optional<'a>
 
 #nowarn "3391"
-let toOption (value : MicroOption<'a>) : Option<'a> = value
+let toOption (value : MicroOption<'a>) : Option<'a> = if value.HasValue then Some value.Value else None
 // let toMicroOption (value : Option<'a>) : MicroOption<'a> = value
 
 // let toOption (microOption : Functional.Option<_>) = if microOption.IsSome then Some microOption.Value else None

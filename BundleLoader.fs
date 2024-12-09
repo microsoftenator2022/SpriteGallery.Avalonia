@@ -14,7 +14,8 @@ open MicroUtils.Interop
 
 open SpriteGallery.Avalonia.Common
 
-type MicroOption<'a> = MicroUtils.Functional.Option<'a>
+type MicroOption = MicroUtils.Types.Optional
+type MicroOption<'a> = MicroUtils.Types.Optional<'a>
 
 type BlueprintAssetReference = { AssetID : string; FileID : int64 }
 
@@ -142,7 +143,7 @@ module AssetLoader =
                 serializedFiles.Value <- serializedFiles.Value |> Array.append [| sf |]
                 Some sf
             else None)
-        |> MicroOption.op_Implicit
+        |> MicroOption.FromFSharpOption
 
     let dereference (pptr : PPtr) =
         objectCache
@@ -272,6 +273,17 @@ module AssetLoader =
     let getSpriteObjects (sf : SerializedFile) =
         sf.Objects
         |> Seq.where (fun o -> sf.GetTypeTreeRoot(o.Id).Type = "Sprite")
+        |> Seq.where (fun o -> 
+            let sfReader = getReader sf.Path
+            TypeTreeValue.Get(sf, sfReader, o)
+            |> function
+            | :? Parsers.Sprite as s ->
+                if s.SpriteSettings.packed && s.SpriteSettings.packingMode = SpritePackingMode.Tight then
+                    log $"Skipping tight-packed sprite {s.Name}"
+                    false
+                else true
+            | _ -> false
+        )
         |> Seq.toArray
 
     let getSpriteObjectsInArchive (archive : UnityArchive) =
@@ -299,7 +311,7 @@ module AssetLoader =
 
             let atlas =
                 s.AtlasPtr
-                |> MicroOption.op_Implicit
+                |> toOption
                 |> function
                 | Some ap when ap <> PPtr.NullPtr ->
                     dereference ap
@@ -311,7 +323,8 @@ module AssetLoader =
             #if DEBUG
             name
             |> Option.defaultValue ""
-            |> printfn "Load sprite \"%s\""
+            |> sprintf "Load sprite \"%s\""
+            |> System.Diagnostics.Debug.Print
             #endif
 
             let renderDataKey = s.RenderDataKey |> toOption
@@ -322,14 +335,28 @@ module AssetLoader =
                     renderDataKey
                     |> Option.bind (fun rdk ->
                         let succ, sad = atlas.RenderDataMap.TryGetValue(rdk)
-
                         if succ then Some sad else None)
                     |> Option.bind (fun sad ->
+                        if sad.SpriteSettings.packed && sad.SpriteSettings.packingMode = SpritePackingMode.Tight then
+                            log $"Sprite {s.Name()} packingMode = Tight. Rect may not be texture rect may not be valid"
+                        
                         let texture = sad.Texture |> getTexture
                         let rect = sad.TextureRect
+                        let multiplier = sad.DownscaleMultiplier
+                        
                         texture
-                        |> Option.map (fun texture -> texture, rect))
-                    |> Option.map (fun (texture, rect) -> Sprite.Create(texture, rect |> toPixelRect))
+                        |> Option.map (fun texture -> texture, rect, multiplier))
+                    |> Option.bind (fun (texture, rect, multiplier) ->
+                        try
+                            Sprite.Create(texture, rect |> toPixelRect multiplier) |> Some
+                        with
+                            :? System.ArgumentOutOfRangeException ->
+#if DEBUG
+                                if System.Diagnostics.Debugger.IsAttached then
+                                    System.Diagnostics.Debugger.Break()
+#endif
+                                s.TextureRect |> toOption |> Option.map (fun rect -> Sprite.Create(texture, rect |> toPixelRect 1f))
+                    )
                 | None ->
                     s.TexturePtr
                     |> toOption
@@ -339,11 +366,12 @@ module AssetLoader =
                             s.Rect
                             |> toOption
                             |> function
-                            | Some rect -> rect |> toPixelRect
+                            | Some rect -> rect |> toPixelRect 1f
                             | None -> Avalonia.PixelRect(Avalonia.PixelPoint(0, 0), texture.Size)
                         
                         Sprite.Create(texture, rect)
                     )
+
             sprite
             |> Option.map (fun sprite ->
                 { sprite with

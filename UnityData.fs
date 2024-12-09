@@ -78,8 +78,26 @@ let getDependenciesAsync dependencylistJson = async {
 
 let getDependencies = getDependenciesAsync >> Async.RunSynchronously
 
-let toPixelRect (rect : Rectf) =
-    Avalonia.PixelRect(Avalonia.PixelPoint(rect.x |> int, rect.y |> int), Avalonia.PixelSize(rect.width |> int, rect.height |> int))
+let toPixelRect (scaleMultiplier : float32) (rect : Rectf) =
+    let dimensions = {|
+        x = floor rect.x
+        y = floor rect.y
+        width = ceil rect.width
+        height = ceil rect.height
+    |}
+    let dimensions =
+        if scaleMultiplier > 0f && scaleMultiplier <> 1f then
+            {| dimensions with
+                x = dimensions.x * scaleMultiplier
+                y = dimensions.y * scaleMultiplier
+                width = dimensions.width * scaleMultiplier
+                height = dimensions.height * scaleMultiplier
+            |}
+        else dimensions
+
+    Avalonia.PixelRect(
+        Avalonia.PixelPoint(dimensions.x |> int, dimensions.y |> int),
+        Avalonia.PixelSize(dimensions.width |> int, dimensions.height |> int))
 
 let getReader (readers : (string * UnityBinaryFileReader) list) path =
     readers

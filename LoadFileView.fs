@@ -298,7 +298,7 @@ let update msg model =
                     }, Cmd.ofMsg Complete
 
     | StatusMessage message ->
-        printfn "%s" message
+        sprintf "%s" message |> log
         { model with StatusMessage = message }, Cmd.none
     | Complete ->
         let model = { model with Complete = true; CurrentFile = model.Path |> Some; StatusMessage = "Loading complete" }
