@@ -135,6 +135,11 @@ let createBitmap bytes size =
     finally
         handle.Free()
 
+let clampRect (clampTo : Avalonia.PixelSize) (rect : Avalonia.PixelRect) =
+    let rect = rect.WithWidth(min (clampTo.Width) (rect.Width))
+    let rect = rect.WithHeight(min (clampTo.Height) (rect.Height))
+    rect
+
 type SpriteTexture (bytes : byte[], size : Avalonia.PixelSize) =
     member val Bitmap = lazy (createBitmap bytes size)
     member _.Bytes = bytes
@@ -162,6 +167,7 @@ with
     member this.ReferenceFileId = this.BlueprintReference |> Option.map (snd >> _.ToString()) |> Option.defaultValue ""
     
     static member Create ((texture : SpriteTexture), (rect : Avalonia.PixelRect)) =
+        let rect = rect |> clampRect (texture.Size)
         //let rect =
         //    if (rect.X + rect.Width) > texture.Size.Width then
         //        rect.WithWidth(texture.Size.Width - rect.X)
@@ -183,7 +189,13 @@ with
         //    else rect
 
         if rect.Height < 0 || rect.Width < 0 then
-            System.ArgumentOutOfRangeException("Invalid texture rect") |> raise
+            log $"Invalid sprite rect {rect}"
+#if DEBUG
+            if System.Diagnostics.Debugger.IsAttached then
+                System.Diagnostics.Debugger.Break()
+#else
+            //System.ArgumentOutOfRangeException("Invalid texture rect") |> raise
+#endif
         
         {
             BaseTexture = texture

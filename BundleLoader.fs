@@ -70,7 +70,7 @@ module AssetLoader =
         |> Option.map snd
         |> Option.defaultWith (fun () ->
 
-            printfn "Mounting archive %s" file
+            sprintf "Mounting archive %s" file |> log
 
             let archive = UnityFileSystem.MountArchive(file, UnityData.mountPoint)
 
@@ -255,7 +255,7 @@ module AssetLoader =
             |> Option.orElseWith (fun () ->
 
                 #if DEBUG
-                printfn $"Load texture PPtr: {pptr.SerializedFilePath} -> FileID = {pptr.FileID}, PathID = {pptr.PathID}"
+                log $"Load texture PPtr: {pptr.SerializedFilePath} -> FileID = {pptr.FileID}, PathID = {pptr.PathID}"
                 #endif
 
                 dereference pptr
@@ -324,7 +324,7 @@ module AssetLoader =
             name
             |> Option.defaultValue ""
             |> sprintf "Load sprite \"%s\""
-            |> System.Diagnostics.Debug.Print
+            |> log
             #endif
 
             let renderDataKey = s.RenderDataKey |> toOption
