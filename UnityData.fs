@@ -12,16 +12,24 @@ open MicroUtils.UnityFilesystem.Converters
 let mountPoint = @"archive:/"
 
 let getDependenciesAsync dependencylistJson = async {
-    use stream = System.IO.File.OpenRead dependencylistJson
-    use textReader = new System.IO.StreamReader(stream)
-    use jReader = new JsonTextReader(textReader)
+    let! json = async {
+        if System.IO.File.Exists dependencylistJson then
+            use stream = System.IO.File.OpenRead dependencylistJson
+            use textReader = new System.IO.StreamReader(stream)
+            use jReader = new JsonTextReader(textReader)
     
-    let! json = JObject.LoadAsync(jReader, Async.DefaultCancellationToken) |> Async.AwaitTask
+            let! json = JObject.LoadAsync(jReader, Async.DefaultCancellationToken) |> Async.AwaitTask
+            return Some json
+        else
+            return None
+    }
     
     let jp =
-        json.Property("BundleToDependencies")
-        |> Option.ofObj
-        |> Option.orElseWith (fun () -> json.Property("m_List") |> Option.ofObj)
+        json
+        |> Option.bind (fun json ->
+            json.Property("BundleToDependencies")
+            |> Option.ofObj
+            |> Option.orElseWith (fun () -> json.Property("m_List") |> Option.ofObj))
 
     let wotr (arr : JArray) =    
         arr
