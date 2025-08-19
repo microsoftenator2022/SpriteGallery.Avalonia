@@ -62,7 +62,8 @@ module AssetLoadService =
     let private loadArchive filePath blueprintReferencedAssetsPath =
         let archive = AssetLoader.mountArchiveWithDependencies filePath |> fst
         
-        AssetLoader.mountArchive blueprintReferencedAssetsPath |> ignore
+        if System.IO.File.Exists blueprintReferencedAssetsPath then
+            AssetLoader.mountArchive blueprintReferencedAssetsPath |> ignore
         
         AssetLoader.getSpriteObjectsInArchive archive |> initState
 
